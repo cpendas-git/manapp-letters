@@ -1,0 +1,1676 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Manapp letters — Text → 3D STL</title>
+
+<!-- opentype.js (classic UMD, exposes window.opentype) -->
+<script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
+
+<!-- Module resolution for three + CSG -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+    "manifold-3d": "https://cdn.jsdelivr.net/npm/manifold-3d@3.5.1/manifold.js"
+  }
+}
+</script>
+
+<style>
+  :root{
+    --bg:#eef0f4; --panel:#ffffff; --panel-2:#f2f3f7; --line:#e3e5ec;
+    --text:#1b1e28; --muted:#697086; --accent:#f59e0b; --accent-2:#3b82f6;
+    --odd:#f59e0b; --even:#3b82f6; --danger:#ef4444;
+    --radius:12px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg); color:var(--text); overflow:hidden;
+  }
+  .app{display:grid; grid-template-columns:340px 1fr; height:100vh}
+  /* ---------- Sidebar ---------- */
+  .sidebar{background:var(--panel); border-right:1px solid var(--line); overflow-y:auto; padding:16px 16px 40px}
+  .brand{display:flex; align-items:center; gap:10px; margin-bottom:4px}
+  .brand h1{font-size:16px; margin:0; letter-spacing:.2px}
+  .brand .dot{width:22px;height:22px;border-radius:6px;background:linear-gradient(135deg,var(--accent),#ff9d3f);display:grid;place-items:center;font-size:13px}
+  .brand small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+  .group{margin-top:18px}
+  .group > label.title{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:8px}
+  .field{margin-bottom:12px}
+  .field label{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:5px}
+  .field label b{color:var(--text);font-weight:600}
+  input[type=text], select, .combo input{
+    width:100%; background:var(--panel-2); border:1px solid var(--line); color:var(--text);
+    border-radius:9px; padding:10px 11px; font-size:14px; outline:none;
+  }
+  input[type=text]:focus, .combo input:focus{border-color:var(--accent-2)}
+  input[type=range]{width:100%; accent-color:var(--accent); margin:2px 0}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .swatch{display:flex;gap:6px;align-items:center;color:var(--muted);font-size:12px}
+  .pill{display:inline-block;padding:1px 6px;border-radius:20px;font-size:10px;font-weight:700}
+  .pill.odd{background:rgba(255,207,63,.16);color:var(--odd)}
+  .pill.even{background:rgba(110,168,255,.16);color:var(--even)}
+  button{font-family:inherit;cursor:pointer}
+  .btn{
+    width:100%; padding:12px; border-radius:10px; border:none; font-size:14px; font-weight:700;
+    background:linear-gradient(135deg,var(--accent),#ff9d3f); color:#241a00;
+  }
+  .btn:disabled{opacity:.5; cursor:not-allowed}
+  .btn.ghost{background:var(--panel-2); color:var(--text); border:1px solid var(--line); font-weight:600}
+  .btn-row{display:flex;gap:8px;margin-top:8px}
+  .btn-row .btn{width:auto;flex:1}
+  .upload{display:block}
+  .upload input{display:none}
+  .hint{font-size:11px;color:var(--muted);line-height:1.5;margin-top:6px}
+  /* combo box */
+  .combo{position:relative}
+  .combo-list{
+    position:absolute; z-index:30; left:0; right:0; top:calc(100% + 4px); max-height:280px; overflow:auto;
+    background:var(--panel); border:1px solid var(--line); border-radius:10px; display:none; box-shadow:0 12px 34px rgba(20,30,60,.16)
+  }
+  .combo-list.open{display:block}
+  .combo-item{padding:9px 11px; font-size:13px; cursor:pointer; display:flex; justify-content:space-between; gap:8px}
+  .combo-item:hover, .combo-item.active{background:rgba(110,168,255,.14)}
+  .combo-item .cat{color:var(--muted); font-size:10px; text-transform:capitalize}
+  .colorrow{display:flex;gap:7px;flex-wrap:wrap;margin-top:2px}
+  .color{width:26px;height:26px;border-radius:7px;border:2px solid transparent;cursor:pointer}
+  .color{box-shadow:0 0 0 1px rgba(20,30,60,.08) inset}
+  .color.sel{border-color:var(--text)}
+  .toggle{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);cursor:pointer;user-select:none}
+  .toggle input{accent-color:var(--accent);width:16px;height:16px}
+  /* ---------- Main ---------- */
+  .main{position:relative; display:flex; flex-direction:column; min-width:0}
+  #view{flex:1; position:relative; min-height:0; overflow:hidden}
+  /* absolute so canvas pixel size can never feed back into layout — on hi-DPI screens
+     (devicePixelRatio 2) an in-flow canvas grows the view, which regrows the canvas,
+     doubling every resize until WebGL dies (the "flashing, no 3D" bug) */
+  #view canvas{position:absolute; inset:0; width:100%; height:100%; display:block}
+  .badge{position:absolute; top:14px; left:14px; background:rgba(255,255,255,.82); backdrop-filter:blur(6px);
+    border:1px solid var(--line); box-shadow:0 4px 14px rgba(20,30,60,.08);
+    padding:7px 11px; border-radius:20px; font-size:12px; color:var(--muted); pointer-events:none}
+  .badge b{color:var(--text)}
+  .spinner{position:absolute; inset:0; display:none; place-items:center; background:rgba(238,240,244,.66); z-index:5; flex-direction:column; gap:12px}
+  .spinner.on{display:grid}
+  .spinner .ring{width:34px;height:34px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--accent);animation:spin .8s linear infinite}
+  .spinner span{color:var(--muted);font-size:13px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  /* ---------- Editor ---------- */
+  .editor{border-top:1px solid var(--line); background:var(--panel); padding:10px 14px 12px}
+  .editor-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+  .editor-head .t{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)}
+  .editor-head .r{font-size:11px;color:var(--muted)}
+  .strip-wrap{overflow-x:auto; padding-bottom:4px}
+  .strip{display:flex; align-items:flex-end; min-height:72px; padding:6px 4px; width:max-content; margin:0 auto}
+  .glyph{display:flex;flex-direction:column;align-items:center;gap:6px;user-select:none}
+  .glyph .ch{
+    font-size:44px; line-height:1; color:var(--text); padding:0 1px; cursor:pointer;
+    border-bottom:3px solid transparent; transition:color .12s;
+  }
+  .glyph.sel .ch{color:var(--accent)}
+  .glyph .ch.odd{border-bottom-color:var(--odd)}
+  .glyph .ch.even{border-bottom-color:var(--even)}
+  .glyph .tag{font-size:9px;color:var(--muted)}
+  .handle{
+    position:relative; align-self:stretch; display:flex; align-items:center; justify-content:center;
+    min-width:14px; cursor:ew-resize; touch-action:none;
+  }
+  .handle .bar{width:3px; height:38px; border-radius:3px; background:var(--line)}
+  .handle:hover .bar{background:var(--accent-2)}
+  .handle.drag .bar{background:var(--accent)}
+  .handle .val{
+    position:absolute; top:-4px; transform:translateY(-100%); background:var(--accent); color:#241a00;
+    font-size:10px; font-weight:700; padding:1px 5px; border-radius:5px; white-space:nowrap; display:none;
+  }
+  .handle.drag .val{display:block}
+  .empty-strip{color:var(--muted);font-size:13px;text-align:center;padding:20px}
+  .errtoast{position:absolute; bottom:14px; left:50%; transform:translateX(-50%); background:var(--danger);
+    color:#fff; padding:9px 14px; border-radius:10px; font-size:13px; display:none; z-index:9; max-width:80%}
+  .errtoast.on{display:block}
+  /* ---------- Mode tabs ---------- */
+  .tabbar{display:flex;gap:6px;margin-top:14px}
+  .tab{flex:1;padding:9px 8px;border-radius:9px;border:1px solid var(--line);background:var(--panel-2);color:var(--muted);font-size:12.5px;font-weight:700}
+  .tab.active{background:linear-gradient(135deg,var(--accent),#ff9d3f);color:#241a00;border-color:transparent}
+  body[data-mode="pendant"] .only-pencil{display:none}
+  body[data-mode="pencil"] .only-pendant{display:none}
+  .shape-row{display:flex;gap:6px;flex-wrap:wrap}
+  .shape-btn{flex:1;min-width:58px;padding:8px 4px;border-radius:9px;border:1px solid var(--line);background:var(--panel-2);color:var(--text);font-size:12px}
+  .shape-btn.active{border-color:var(--accent);background:rgba(245,158,11,.14)}
+  @media (max-width:820px){
+    .app{grid-template-columns:1fr; grid-template-rows:auto 1fr}
+    .sidebar{max-height:44vh}
+  }
+</style>
+</head>
+<body data-mode="pencil">
+<div class="app">
+  <!-- ================= SIDEBAR ================= -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="dot">✏️</div>
+      <div>
+        <h1>Manapp letters</h1>
+        <small>Text → 3D → STL toys</small>
+      </div>
+    </div>
+
+    <div class="tabbar">
+      <button class="tab active" id="tabPencil">✏️ Pencil words</button>
+      <button class="tab" id="tabPendant">🔘 Pendant key</button>
+    </div>
+
+    <div class="group only-pencil">
+      <label class="title">Text</label>
+      <div class="field">
+        <input type="text" id="text" value="Emma" maxlength="24" autocomplete="off" spellcheck="false" />
+        <div class="hint">Each letter becomes a bead with a hole so it slides onto a pencil.</div>
+      </div>
+    </div>
+
+    <div class="group">
+      <label class="title">Font</label>
+      <div class="field combo" id="combo">
+        <input type="text" id="fontSearch" placeholder="Search Google Fonts…" autocomplete="off" spellcheck="false" />
+        <div class="combo-list" id="fontList"></div>
+      </div>
+      <label class="upload btn ghost" style="text-align:center">
+        Upload .ttf / .otf
+        <input type="file" id="fontFile" accept=".ttf,.otf,font/ttf,font/otf" />
+      </label>
+      <div class="hint" id="fontStatus">Loading font…</div>
+    </div>
+
+    <div class="group only-pencil">
+      <label class="title">Dimensions (mm)</label>
+      <div class="field">
+        <label>Text size <b><span id="sizeV">28</span> mm</b></label>
+        <input type="range" id="size" min="10" max="60" value="28" step="1" />
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label><span class="pill odd">ODD</span> height <b><span id="oddV">12</span></b></label>
+          <input type="range" id="oddH" min="2" max="30" value="12" step="0.5" />
+        </div>
+        <div class="field">
+          <label><span class="pill even">EVEN</span> height <b><span id="evenV">8</span></b></label>
+          <input type="range" id="evenH" min="2" max="30" value="8" step="0.5" />
+        </div>
+      </div>
+      <div class="hint">Odd letters = 1st, 3rd, 5th… • Even letters = 2nd, 4th, 6th…</div>
+    </div>
+
+    <div class="group only-pencil">
+      <label class="title">Pencil hole</label>
+      <div class="field">
+        <label>Pencil diameter <b><span id="pencilV">7.3</span> mm</b></label>
+        <input type="range" id="pencil" min="0" max="14" value="7.3" step="0.1" />
+      </div>
+      <div class="field">
+        <label>Hole position (across) <b><span id="holeV">50</span>%</b></label>
+        <input type="range" id="holePos" min="10" max="90" value="50" step="1" />
+      </div>
+      <div class="field">
+        <label>Hole height / Z (above bed) <b><span id="holeZV">50</span>%</b></label>
+        <input type="range" id="holeZ" min="5" max="95" value="50" step="1" />
+      </div>
+      <div class="hint">Across = where along the letter the pencil threads; Z = how high the channel sits above the print bed. Set diameter to 0 to disable the hole.</div>
+    </div>
+
+    <div class="group only-pencil">
+      <label class="title">Style</label>
+      <div class="field">
+        <label>Global letter spacing <b><span id="spaceV">0</span> mm</b></label>
+        <input type="range" id="spacing" min="-8" max="20" value="0" step="0.5" />
+      </div>
+      <label class="toggle" style="margin-bottom:10px"><input type="checkbox" id="bevel" /> Rounded (bevelled) edges</label>
+      <label class="toggle" style="margin-bottom:10px"><input type="checkbox" id="showPencil" checked /> Show pencil guide</label>
+      <div class="field">
+        <label>Preview color</label>
+        <div class="colorrow" id="colors"></div>
+      </div>
+    </div>
+
+    <div class="group only-pencil">
+      <button class="btn" id="download">⬇ Download STL</button>
+      <div class="btn-row">
+        <button class="btn ghost" id="resetSpace">Reset spacing</button>
+        <button class="btn ghost" id="recenter">Recenter view</button>
+      </div>
+      <div class="hint">STL units are millimetres — import directly into your slicer.</div>
+    </div>
+
+    <!-- ============ PENDANT KEY MODE ============ -->
+    <div class="group only-pendant">
+      <label class="title">Shape (key outline)</label>
+      <div class="shape-row" id="pdShapes">
+        <button class="shape-btn active" data-shape="flower">🌸 Flower</button>
+        <button class="shape-btn" data-shape="circle">⚪ Circle</button>
+        <button class="shape-btn" data-shape="square">🔲 Square</button>
+        <button class="shape-btn" data-shape="heart">❤️ Heart</button>
+      </div>
+      <label class="upload btn ghost" style="text-align:center;margin-top:8px">Upload SVG shape
+        <input type="file" id="pdSvg" accept=".svg,image/svg+xml" /></label>
+      <div class="field" style="margin-top:10px">
+        <label>Shape width <b><span id="pdWidthV">35</span> mm</b></label>
+        <input type="range" id="pdWidth" min="24" max="70" value="35" step="0.5" />
+      </div>
+      <div class="hint" id="pdShapeHint">The key (cap) is exactly this shape; the base grows outward from it (gap + wall). Keep ≥ ~26×24 mm so the switch fits.</div>
+    </div>
+
+    <div class="group only-pendant">
+      <label class="title">Fit &amp; base</label>
+      <div class="field"><label>Key ↔ wall gap <b><span id="pdGapV">0.4</span> mm</b></label>
+        <input type="range" id="pdGap" min="0.05" max="3" value="0.4" step="0.05" /></div>
+      <div class="row2">
+        <div class="field"><label>Wall thick <b><span id="pdWallTV">3</span></b></label>
+          <input type="range" id="pdWallT" min="1.2" max="8" value="3" step="0.1" /></div>
+        <div class="field"><label>Wall height <b><span id="pdWallHV">6</span></b></label>
+          <input type="range" id="pdWallH" min="0" max="16" value="6" step="0.5" /></div>
+      </div>
+      <div class="field"><label>Base bottom thickness <b><span id="pdWebV">1</span> mm</b></label>
+        <input type="range" id="pdWeb" min="0.6" max="4" value="1" step="0.2" /></div>
+      <div class="hint">Wall height is above the cavity floor — raise it to hug the key for stability. The original model's gap was ≈2 mm (sloppy); try 0.3–0.5.</div>
+    </div>
+
+    <div class="group only-pendant">
+      <label class="title">Hanging ring</label>
+      <label class="toggle" style="margin-bottom:8px"><input type="checkbox" id="pdRingOn" checked /> Ring enabled</label>
+      <div class="row2">
+        <div class="field"><label>Hole Ø <b><span id="pdRingHoleV">6</span></b></label>
+          <input type="range" id="pdRingHole" min="2" max="12" value="6" step="0.5" /></div>
+        <div class="field"><label>Ring width <b><span id="pdRingBandV">2.2</span></b></label>
+          <input type="range" id="pdRingBand" min="1.2" max="5" value="2.2" step="0.1" /></div>
+      </div>
+      <div class="field"><label>Ring thickness <b><span id="pdRingThV">3</span> mm</b></label>
+        <input type="range" id="pdRingTh" min="1.2" max="8" value="3" step="0.2" /></div>
+      <div class="field"><label>Ring height <b><span id="pdRingZV">0</span>%</b></label>
+        <input type="range" id="pdRingZ" min="0" max="100" value="0" step="1" /></div>
+      <div class="hint">0% = flush with the bottom (prints flat, no supports). Higher floats the ring up the wall — like the original's mid-height ring — but it will need supports when printing.</div>
+    </div>
+
+    <div class="group only-pendant">
+      <label class="title">Key (cap)</label>
+      <div class="field">
+        <input type="text" id="pdLetter" value="A" maxlength="4" autocomplete="off" spellcheck="false" />
+      </div>
+      <div class="row2">
+        <div class="field"><label>Key thickness <b><span id="pdCapThV">6</span></b></label>
+          <input type="range" id="pdCapTh" min="4" max="12" value="6" step="0.5" /></div>
+        <div class="field"><label>Letter height <b><span id="pdLetterHV">2</span></b></label>
+          <input type="range" id="pdLetterH" min="0" max="5" value="2" step="0.5" /></div>
+      </div>
+      <div class="field"><label>Letter size <b><span id="pdLetterSV">55</span>%</b></label>
+        <input type="range" id="pdLetterS" min="20" max="90" value="55" step="1" /></div>
+      <div class="hint">Uses the font picked above. Letter height 0 = plain key. The switch-stem socket is fixed (MX size, copied from the original model).</div>
+    </div>
+
+    <div class="group only-pendant">
+      <label class="title">Preview &amp; export</label>
+      <div class="field" style="margin-bottom:8px">
+        <label>Visible parts <b style="font-weight:400;color:var(--muted)">(switch = preview only)</b></label>
+        <div class="shape-row" id="pdParts">
+          <button class="shape-btn active" data-part="base">Base</button>
+          <button class="shape-btn active" data-part="cap">Key</button>
+          <button class="shape-btn active" data-part="switch">Switch</button>
+        </div>
+      </div>
+      <label class="toggle" style="margin-bottom:8px"><input type="checkbox" id="pdXray" /> X-ray (see-through)</label>
+      <label class="toggle" style="margin-bottom:8px"><input type="checkbox" id="pdSlice" /> Slice view (cut in half)</label>
+      <div class="field" id="pdSliceRow" style="display:none"><label>Slice position <b><span id="pdSliceV">0</span> mm</b></label>
+        <input type="range" id="pdSlicePos" min="-20" max="20" value="0" step="0.5" /></div>
+      <div class="field"><label>Explode view <b><span id="pdExplodeV">0</span> mm</b></label>
+        <input type="range" id="pdExplode" min="0" max="40" value="0" step="1" /></div>
+      <button class="btn" id="pdDlBase">⬇ Base STL</button>
+      <div class="btn-row">
+        <button class="btn" id="pdDlCap" style="background:var(--accent-2);color:#fff">⬇ Key STL</button>
+        <button class="btn ghost" id="pdRecenter">Recenter</button>
+      </div>
+      <div class="field" style="margin-top:12px">
+        <label>Bulk letters (comma-separated)</label>
+        <input type="text" id="pdBulk" value="a,b,c" autocomplete="off" spellcheck="false" />
+      </div>
+      <button class="btn ghost" id="pdDlBulk">⬇ Download Bulk Set</button>
+      <div class="hint">One key STL per entry — e.g. a,b,c,d,e,f downloads 6 key caps, all with the current shape and settings. Your browser will ask permission for multiple downloads.</div>
+    </div>
+  </aside>
+
+  <!-- ================= MAIN ================= -->
+  <main class="main">
+    <div id="view">
+      <div class="badge" id="badge">—</div>
+      <div class="spinner" id="spinner"><div class="ring"></div><span id="spinText">Loading…</span></div>
+      <div class="errtoast" id="err"></div>
+    </div>
+
+    <div class="editor only-pencil">
+      <div class="editor-head">
+        <span class="t">Letter spacing editor</span>
+        <span class="r">Drag the bars between letters ↔</span>
+      </div>
+      <div class="strip-wrap">
+        <div class="strip" id="strip"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { STLExporter } from 'three/addons/exporters/STLExporter.js';
+import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
+import { SVGLoader } from 'three/addons/loaders/SVGLoader.js';
+import ManifoldModule from 'manifold-3d';
+
+/* ============================================================
+   Diagnostics — every error, GPU fact, and loop heartbeat is
+   recorded so failures on OTHER machines can be read, not guessed.
+   Open with the 🩺 button (auto-opens when trouble is detected).
+   ============================================================ */
+const DIAG = { t0: Date.now(), errors:[], cons:[], gpu:'?', webgl2:null, ctxLost:0,
+               frames:0, rendered:0, renderErr:null, renderErrN:0, wasm:'pending' };
+const diagTs = () => ((Date.now()-DIAG.t0)/1000).toFixed(1)+'s';
+window.addEventListener('error', e=>{
+  DIAG.errors.push(diagTs()+' '+(e.message||'?')+' ['+String(e.filename||'').split('/').pop().slice(-25)+':'+(e.lineno||0)+']');
+  if(DIAG.errors.length>40) DIAG.errors.shift();
+});
+window.addEventListener('unhandledrejection', e=>{
+  DIAG.errors.push(diagTs()+' [promise] '+((e.reason && (e.reason.message||e.reason))||'?'));
+  if(DIAG.errors.length>40) DIAG.errors.shift();
+});
+const _cerr = console.error.bind(console);
+console.error = (...a)=>{ DIAG.cons.push(diagTs()+' '+a.map(x=>String(x && x.message || x).slice(0,140)).join(' ')); if(DIAG.cons.length>30) DIAG.cons.shift(); _cerr(...a); };
+
+// Manifold (WASM) — guarantees watertight, manifold boolean results for 3D printing.
+let Manifold = null, ManifoldMesh = null, CrossSection = null;
+async function initManifold(){
+  try{
+    const wasm = await ManifoldModule();
+    wasm.setup();
+    Manifold = wasm.Manifold;
+    ManifoldMesh = wasm.Mesh;
+    CrossSection = wasm.CrossSection;
+    DIAG.wasm = 'ok';
+  }catch(e){
+    DIAG.wasm = 'FAIL: ' + ((e && (e.message||e)) || '?');
+    throw e;
+  }
+}
+
+// Weld a (non-indexed) geometry by POSITION ONLY → indexed mesh Manifold accepts as manifold.
+// (mergeVertices refuses to weld across differing normals/uvs, which would leave it "not manifold".)
+function weldByPosition(geo){
+  const pos = geo.attributes.position; const F = 1e4;   // 0.1 micron grid
+  const map = new Map(); const verts = []; const idx = new Uint32Array(pos.count);
+  for(let i=0;i<pos.count;i++){
+    const x=pos.getX(i), y=pos.getY(i), z=pos.getZ(i);
+    const k = Math.round(x*F)+'_'+Math.round(y*F)+'_'+Math.round(z*F);
+    let id = map.get(k);
+    if(id===undefined){ id = verts.length/3; map.set(k,id); verts.push(x,y,z); }
+    idx[i] = id;
+  }
+  return { vertProperties: new Float32Array(verts), triVerts: idx };
+}
+
+// Convert a Manifold result mesh back into a THREE.BufferGeometry (copies out of WASM heap).
+function manifoldToGeometry(mesh){
+  const np = mesh.numProp;
+  let pos;
+  if(np===3){ pos = mesh.vertProperties.slice(); }
+  else {
+    const nv = mesh.vertProperties.length/np;
+    pos = new Float32Array(nv*3);
+    for(let i=0;i<nv;i++){ pos[i*3]=mesh.vertProperties[i*np]; pos[i*3+1]=mesh.vertProperties[i*np+1]; pos[i*3+2]=mesh.vertProperties[i*np+2]; }
+  }
+  const bg = new THREE.BufferGeometry();
+  bg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  bg.setIndex(new THREE.BufferAttribute(mesh.triVerts.slice(), 1));
+  // Crease-aware normals: smooth the round tunnel & letter curves, keep flat faces and 90° edges crisp.
+  // (Fully-smoothed normals make Manifold's flat-face sliver triangles show up as shading artifacts.)
+  return toCreasedNormals(bg, Math.PI/4);   // 45° threshold
+}
+
+/* ============================================================
+   State
+   ============================================================ */
+const state = {
+  text: 'Emma',
+  size: 28,
+  oddH: 12,
+  evenH: 8,
+  pencil: 7.3,
+  holePos: 0.5,   // position across the letter (word depth on the bed)
+  holeZ: 0.5,     // vertical position of the channel within the thinnest letter (height above bed)
+  spacing: 0,
+  bevel: false,
+  showPencil: true,
+  color: 0xffcf3f,
+  gaps: [],            // per-gap extra spacing (mm), length = chars-1
+  fontUrl: null,       // css font-family source for the editor preview
+  fontFamily: 'preview-font',
+};
+
+const WEIGHT_NAMES = {100:'Thin',200:'ExtraLight',300:'Light',400:'Regular',500:'Medium',600:'SemiBold',700:'Bold',800:'ExtraBold',900:'Black'};
+
+// Curated fallback list (used if the live Fontsource list can't be fetched)
+const FALLBACK_FONTS = [
+  ['fredoka','Fredoka',[300,400,500,600,700],'sans-serif'],
+  ['baloo-2','Baloo 2',[400,500,600,700,800],'display'],
+  ['luckiest-guy','Luckiest Guy',[400],'display'],
+  ['bungee','Bungee',[400],'display'],
+  ['pacifico','Pacifico',[400],'handwriting'],
+  ['lobster','Lobster',[400],'display'],
+  ['bangers','Bangers',[400],'display'],
+  ['chewy','Chewy',[400],'display'],
+  ['titan-one','Titan One',[400],'display'],
+  ['boogaloo','Boogaloo',[400],'display'],
+  ['righteous','Righteous',[400],'display'],
+  ['anton','Anton',[400],'sans-serif'],
+  ['bebas-neue','Bebas Neue',[400],'sans-serif'],
+  ['oswald','Oswald',[200,300,400,500,600,700],'sans-serif'],
+  ['montserrat','Montserrat',[100,200,300,400,500,600,700,800,900],'sans-serif'],
+  ['poppins','Poppins',[100,200,300,400,500,600,700,800,900],'sans-serif'],
+  ['nunito','Nunito',[200,300,400,500,600,700,800,900],'sans-serif'],
+  ['quicksand','Quicksand',[300,400,500,600,700],'sans-serif'],
+  ['comfortaa','Comfortaa',[300,400,500,600,700],'display'],
+  ['raleway','Raleway',[100,200,300,400,500,600,700,800,900],'sans-serif'],
+  ['roboto','Roboto',[100,300,400,500,700,900],'sans-serif'],
+  ['playfair-display','Playfair Display',[400,500,600,700,800,900],'serif'],
+  ['dancing-script','Dancing Script',[400,500,600,700],'handwriting'],
+  ['permanent-marker','Permanent Marker',[400],'handwriting'],
+  ['caveat','Caveat',[400,500,600,700],'handwriting'],
+  ['satisfy','Satisfy',[400],'handwriting'],
+  ['sacramento','Sacramento',[400],'handwriting'],
+  ['kalam','Kalam',[300,400,700],'handwriting'],
+  ['shrikhand','Shrikhand',[400],'display'],
+  ['alfa-slab-one','Alfa Slab One',[400],'display'],
+].map(([id,family,weights,category])=>({id,family,weights,category}));
+
+/* ============================================================
+   Three.js scene
+   ============================================================ */
+const view = document.getElementById('view');
+function makeRenderer(){
+  try { return new THREE.WebGLRenderer({antialias:true, powerPreference:'high-performance'}); }
+  catch(e){ return new THREE.WebGLRenderer({antialias:false}); }   // some GPUs refuse AA contexts
+}
+const renderer = makeRenderer();
+
+// Weak-GPU detection: software WebGL (SwiftShader/llvmpipe — e.g. hardware acceleration off)
+// can't sustain full quality and thrashes context losses (symptom: flashing canvas, no 3D).
+// Run those machines in lite mode: no shadows, 1× resolution, half frame rate.
+let liteMode = false;
+try{
+  const gl = renderer.getContext();
+  DIAG.webgl2 = (typeof WebGL2RenderingContext !== 'undefined') && (gl instanceof WebGL2RenderingContext);
+  const info = gl.getExtension('WEBGL_debug_renderer_info');
+  const gpu = info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) : '(driver hides it)';
+  DIAG.gpu = gpu;
+  DIAG.maxTex = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+  if(/swiftshader|software|llvmpipe|basic render/i.test(gpu)) liteMode = true;
+}catch(e){ DIAG.gpu = 'probe failed: ' + (e.message||e); }
+renderer.setPixelRatio(liteMode ? 1 : Math.min(devicePixelRatio,2));
+renderer.shadowMap.enabled = !liteMode;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+view.appendChild(renderer.domElement);
+
+// Context-loss resilience: allow restore, and degrade quality if losses repeat.
+let ctxLosses = 0;
+renderer.domElement.addEventListener('webglcontextlost', (e)=>{
+  e.preventDefault();
+  DIAG.ctxLost = ctxLosses + 1;
+  DIAG.errors.push(diagTs()+' [webgl] context lost (#'+(ctxLosses+1)+')');
+  if(++ctxLosses >= 2 && !liteMode){
+    liteMode = true;
+    renderer.setPixelRatio(1);
+    renderer.shadowMap.enabled = false;
+    showError('3D quality reduced to keep this device stable.');
+  }
+}, false);
+renderer.domElement.addEventListener('webglcontextrestored', ()=>{ resize(); }, false);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xeef0f4);
+
+const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 5000);
+camera.position.set(0, 30, 140);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+
+// lights
+scene.add(new THREE.HemisphereLight(0xffffff, 0xd6dae4, 1.05));
+const key = new THREE.DirectionalLight(0xffffff, 1.5);
+key.position.set(60, 90, 70);
+key.castShadow = true;
+key.shadow.mapSize.set(2048,2048);
+key.shadow.camera.near = 10; key.shadow.camera.far = 400;
+key.shadow.camera.left=-120; key.shadow.camera.right=120; key.shadow.camera.top=120; key.shadow.camera.bottom=-120;
+key.shadow.bias = -0.0004;
+scene.add(key);
+const fill = new THREE.DirectionalLight(0xbcd0ff, 0.35);
+fill.position.set(-70, 40, -30);
+scene.add(fill);
+
+// ground (shadow catcher)
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(2000,2000),
+  new THREE.ShadowMaterial({opacity:0.16})
+);
+ground.rotation.x = -Math.PI/2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+const grid = new THREE.GridHelper(400, 40, 0xcfd3dd, 0xe1e4eb);
+grid.material.opacity = 0.6; grid.material.transparent = true;
+scene.add(grid);
+
+const wordGroup = new THREE.Group();   // exported meshes live here
+scene.add(wordGroup);
+let pencilGuide = null;
+
+let material = new THREE.MeshStandardMaterial({color:state.color, metalness:0.15, roughness:0.55});
+
+function resize(){
+  const w = view.clientWidth, h = view.clientHeight;
+  renderer.setSize(w,h,false);
+  camera.aspect = w/h;
+  camera.updateProjectionMatrix();
+}
+let resizeRaf = 0;   // defer to next frame — resizing inside the RO callback triggers Chrome's
+                     // benign "ResizeObserver loop completed with undelivered notifications"
+new ResizeObserver(()=>{ cancelAnimationFrame(resizeRaf); resizeRaf = requestAnimationFrame(resize); }).observe(view);
+resize();
+
+let frameFlip = false;
+(function animate(){
+  requestAnimationFrame(animate);
+  DIAG.frames++;
+  if(liteMode && (frameFlip = !frameFlip)) return;   // ~30fps on weak GPUs
+  controls.update();
+  try{
+    renderer.render(scene, camera);
+    DIAG.rendered++;
+  }catch(e){
+    DIAG.renderErr = String(e && (e.message||e));
+    if(++DIAG.renderErrN === 1) DIAG.errors.push(diagTs()+' [render] '+DIAG.renderErr);
+    if(DIAG.renderErrN > 5 && !liteMode){   // stop hammering a broken pipeline
+      liteMode = true; renderer.setPixelRatio(1); renderer.shadowMap.enabled = false;
+    }
+  }
+})();
+
+/* ============================================================
+   Glyph → shapes (with hole detection)
+   ============================================================ */
+function pointInPolygon(pt, poly){
+  let inside = false;
+  for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+    const xi=poly[i].x, yi=poly[i].y, xj=poly[j].x, yj=poly[j].y;
+    if(((yi>pt.y)!==(yj>pt.y)) && (pt.x < (xj-xi)*(pt.y-yi)/(yj-yi)+xi)) inside = !inside;
+  }
+  return inside;
+}
+
+// Build a THREE.Path (curves) from opentype commands, flipping Y (font Y is down).
+function commandsToPath(cmds){
+  const p = new THREE.Path();
+  for(const c of cmds){
+    if(c.type==='M') p.moveTo(c.x, -c.y);
+    else if(c.type==='L') p.lineTo(c.x, -c.y);
+    else if(c.type==='C') p.bezierCurveTo(c.x1,-c.y1,c.x2,-c.y2,c.x,-c.y);
+    else if(c.type==='Q') p.quadraticCurveTo(c.x1,-c.y1,c.x,-c.y);
+    else if(c.type==='Z') p.closePath();
+  }
+  return p;
+}
+
+// Convert an opentype glyph path into an array of THREE.Shape (outer + holes).
+function glyphToShapes(otPath){
+  // split commands into contours at each 'M'
+  const contours = [];
+  let cur = null;
+  for(const c of otPath.commands){
+    if(c.type==='M'){ if(cur) contours.push(cur); cur=[c]; }
+    else if(cur) cur.push(c);
+  }
+  if(cur) contours.push(cur);
+
+  const paths = [], polys = [];
+  for(const cmds of contours){
+    const p = commandsToPath(cmds);
+    const pts = p.getPoints(24);
+    if(pts.length < 3) continue;          // skip degenerate
+    paths.push(p); polys.push(pts);
+  }
+  if(!paths.length) return [];
+
+  // nesting depth via even-odd rule
+  const info = paths.map((p,i)=>{
+    const rep = polys[i][0];
+    let nest = 0;
+    for(let j=0;j<paths.length;j++){ if(j!==i && pointInPolygon(rep, polys[j])) nest++; }
+    return { nest, hole: nest % 2 === 1 };
+  });
+
+  const outers = [];
+  paths.forEach((p,i)=>{
+    if(!info[i].hole){
+      const s = new THREE.Shape();
+      s.curves = p.curves.slice();
+      s.holes = [];
+      outers.push({shape:s, i});
+    }
+  });
+  if(!outers.length){ // safety: treat everything as outer
+    return paths.map(p=>{ const s=new THREE.Shape(); s.curves=p.curves.slice(); return s; });
+  }
+  paths.forEach((p,i)=>{
+    if(info[i].hole){
+      const rep = polys[i][0];
+      let parent = outers[0], best = -1;
+      for(const o of outers){
+        if(pointInPolygon(rep, polys[o.i]) && info[o.i].nest > best){ parent = o; best = info[o.i].nest; }
+      }
+      const h = new THREE.Path();
+      h.curves = p.curves.slice();
+      parent.shape.holes.push(h);
+    }
+  });
+  return outers.map(o=>o.shape);
+}
+
+/* ============================================================
+   Build the word
+   ============================================================ */
+let currentFont = null;   // opentype font
+let rebuildTimer = null;
+let hasFramed = false;    // camera is auto-framed only once; settings never reset the view
+
+function scheduleRebuild(delay=90){
+  clearTimeout(rebuildTimer);
+  rebuildTimer = setTimeout(rebuild, delay);
+}
+
+function clearGroup(){
+  for(const m of wordGroup.children){
+    m.geometry?.dispose();
+    if(m.material && m.material !== material) m.material.dispose(); // guide has its own material
+  }
+  wordGroup.clear();
+  pencilGuide = null;
+}
+
+function rebuild(){
+  if(!currentFont) return;
+  clearGroup();
+
+  const text = state.text;
+  const size = state.size;
+  const upm = currentFont.unitsPerEm || 1000;
+  const scale = size / upm;
+  const seg = size < 24 ? 12 : 16;   // curve subdivisions per glyph segment
+
+  // ---- pass 1: build each visible letter's extruded geometry at absolute X ----
+  const letters = [];
+  let cursorX = 0;
+  let visibleIndex = 0;                 // counts non-space chars for odd/even
+  let minDepth = Infinity;              // thinnest letter (drives pencil-channel height)
+  const bbox = new THREE.Box3(new THREE.Vector3(Infinity,Infinity,Infinity), new THREE.Vector3(-Infinity,-Infinity,-Infinity));
+
+  for(let i=0;i<text.length;i++){
+    const ch = text[i];
+    const glyph = currentFont.charToGlyph(ch);
+    const advance = (glyph.advanceWidth || upm*0.4) * scale;
+
+    if(ch !== ' '){
+      const otPath = glyph.getPath(0, 0, size);
+      const shapes = glyphToShapes(otPath);
+      if(shapes.length){
+        const isOdd = (visibleIndex % 2 === 0);     // 1st letter (index 0) = odd
+        const depth = isOdd ? state.oddH : state.evenH;
+        minDepth = Math.min(minDepth, depth);
+        const geo = new THREE.ExtrudeGeometry(shapes, {
+          depth, steps:1, curveSegments:seg,
+          bevelEnabled: state.bevel, bevelThickness:0.5, bevelSize:0.4, bevelSegments:2
+        });
+        // extrude 0..depth so every letter shares the Z=0 base face → all touch the bed
+        geo.translate(cursorX, 0, 0);
+        geo.computeBoundingBox();
+        bbox.union(geo.boundingBox);
+        letters.push(geo);
+      }
+      visibleIndex++;
+    }
+    // advance cursor: glyph width + global spacing + this letter's manual gap
+    const gap = state.gaps[i] || 0;
+    cursorX += advance + state.spacing + gap;
+  }
+
+  if(!letters.length){ updateBadge(0); return; }
+
+  // ---- centre horizontally & vertically at origin ----
+  const cx = (bbox.min.x + bbox.max.x)/2;
+  const yMin = bbox.min.y, yMax = bbox.max.y;
+  const holeY = yMin + (yMax - yMin) * state.holePos;   // where across the letter the pencil passes (word depth)
+  const holeZ = state.holeZ * minDepth;                 // vertical height of the channel above the bed
+  const wordW = bbox.max.x - bbox.min.x;
+
+  // ---- pencil hole cylinder as a Manifold solid (along X, threading every letter) ----
+  const doHole = state.pencil > 0.05 && Manifold;
+  let cyl = null;
+  if(doHole){
+    const r = state.pencil/2;
+    const len = wordW + state.pencil*4 + 20;
+    // Manifold cylinder runs along Z; rotate 90° about Y → along X; then place at (holeY, holeZ).
+    // Each op returns a new WASM solid, so free the intermediates to avoid leaks across rebuilds.
+    const c0 = Manifold.cylinder(len, r, r, 64, true);
+    const c1 = c0.rotate([0,90,0]); c0.delete();
+    cyl = c1.translate([0, holeY, holeZ]); c1.delete();
+  }
+
+  // ---- pass 2: place, subtract the hole with Manifold (guaranteed watertight), add mesh ----
+  for(const geo of letters){
+    geo.translate(-cx, 0, 0);        // centre the word
+    let finalGeo = geo;
+    if(doHole){
+      try{
+        const w = weldByPosition(geo);
+        const solid = new Manifold(new ManifoldMesh({numProp:3, vertProperties:w.vertProperties, triVerts:w.triVerts}));
+        const res = solid.subtract(cyl);
+        finalGeo = manifoldToGeometry(res.getMesh());   // copies out before delete
+        solid.delete(); res.delete();
+        geo.dispose();
+      }catch(e){
+        finalGeo = geo;   // fallback: keep the solid (still manifold) letter if the cut fails
+      }
+    }
+    const mesh = new THREE.Mesh(finalGeo, material);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    wordGroup.add(mesh);
+  }
+  if(cyl) cyl.delete();
+
+  // ---- lay the letters flat on the bed (big face down) for easy printing ----
+  wordGroup.rotation.set(-Math.PI/2, 0, 0);   // tip 90° back so thickness points up
+  wordGroup.position.set(0,0,0);
+  wordGroup.updateMatrixWorld(true);
+  const gb = new THREE.Box3().setFromObject(wordGroup);   // letters only (guide not added yet)
+  wordGroup.position.y = -gb.min.y;                        // rest on the ground plane
+
+  // ---- pencil guide rod (visual only; child of the group so it follows the rotation) ----
+  if(state.showPencil && state.pencil > 0.05){
+    const r = state.pencil/2;
+    const len = wordW + state.pencil*4 + 60;
+    const g = new THREE.CylinderGeometry(r, r, len, 32);
+    g.rotateZ(Math.PI/2);          // align along X (word direction), same local frame as letters
+    g.translate(0, holeY, holeZ);  // local hole position, before the group's rotation
+    pencilGuide = new THREE.Mesh(g, new THREE.MeshStandardMaterial({
+      color:0xffb300, roughness:0.4, metalness:0.1, transparent:true, opacity:0.5
+    }));
+    wordGroup.add(pencilGuide);
+  }
+
+  updateBadge(letters.length, wordW, yMax-yMin, minDepth);
+  if(!hasFramed){ frameCamera(); hasFramed = true; }   // frame once; keep the user's view afterwards
+}
+
+function frameCamera(group = wordGroup){
+  const box = new THREE.Box3().setFromObject(group);
+  if(box.isEmpty()) return;
+  const c = box.getCenter(new THREE.Vector3());
+  const s = box.getSize(new THREE.Vector3());
+  const maxDim = Math.max(s.x, s.y, s.z);
+  const dist = (maxDim/2) / Math.tan((camera.fov*Math.PI/180)/2) * 1.5 + 30;
+  controls.target.copy(c);
+  camera.position.set(c.x, c.y + dist*0.85, c.z + dist*0.72);   // angled top-down view of the flat word
+  camera.updateProjectionMatrix();
+}
+
+function updateBadge(n, w=0, h=0, minT=0){
+  const badge = document.getElementById('badge');
+  let s;
+  if(!n){ s = 'No printable letters'; }
+  else{
+    s = `<b>${n}</b> letters &nbsp;·&nbsp; <b>${w.toFixed(0)}</b>×<b>${h.toFixed(0)}</b> mm &nbsp;·&nbsp; ✏️ <b>${state.pencil}</b>mm`;
+    if(state.pencil > 0.05 && minT && state.pencil > minT + 0.01){
+      s += ` &nbsp;·&nbsp; <span style="color:var(--danger)">⚠ raise letter height ≥ ${state.pencil}mm</span>`;
+    }
+  }
+  lastBadge.pencil = s;
+  if(state.mode === 'pencil') badge.innerHTML = s;
+}
+
+/* ============================================================
+   Font loading
+   ============================================================ */
+function expoUrl(id, family, weights){
+  const w = weights.includes(400) ? 400 : weights.slice().sort((a,b)=>Math.abs(a-400)-Math.abs(b-400))[0];
+  const name = WEIGHT_NAMES[w] || 'Regular';
+  const file = family.replace(/\s+/g,'') + '_' + w + name + '.ttf';
+  return `https://cdn.jsdelivr.net/npm/@expo-google-fonts/${id}/${file}`;
+}
+
+function setPreviewFontFace(url){
+  // inject an @font-face so the editor strip renders in the real font
+  let el = document.getElementById('previewFace');
+  if(!el){ el = document.createElement('style'); el.id='previewFace'; document.head.appendChild(el); }
+  el.textContent = `@font-face{font-family:'preview-font';src:url('${url}');font-display:swap}`;
+}
+
+async function loadFontFromUrl(url, label, previewUrl){
+  showSpinner(true, 'Loading ' + label + '…');
+  setFontStatus('Loading ' + label + '…');
+  try{
+    const buf = await fetch(url).then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status); return r.arrayBuffer(); });
+    currentFont = opentype.parse(buf);
+    setPreviewFontFace(previewUrl || url);
+    setFontStatus('Font: ' + label);
+    renderEditor();
+    rebuild();
+    pendantFontRefresh();
+  }catch(e){
+    setFontStatus('Could not load ' + label + '. Try another or upload a .ttf.');
+    showError('Font failed to load: ' + label + '. This family may not be on the CDN — try uploading its .ttf file.');
+  }finally{
+    showSpinner(false);
+  }
+}
+
+function loadFontFromFile(file){
+  showSpinner(true, 'Reading font…');
+  const url = URL.createObjectURL(file);
+  const reader = new FileReader();
+  reader.onload = () => {
+    try{
+      currentFont = opentype.parse(reader.result);
+      setPreviewFontFace(url);
+      setFontStatus('Font: ' + file.name);
+      renderEditor();
+      rebuild();
+      pendantFontRefresh();
+    }catch(e){
+      showError('That file is not a valid TTF/OTF font.');
+      setFontStatus('Upload failed — invalid font file.');
+    }finally{ showSpinner(false); }
+  };
+  reader.onerror = () => { showError('Could not read the file.'); showSpinner(false); };
+  reader.readAsArrayBuffer(file);
+}
+
+/* ============================================================
+   Font combo box
+   ============================================================ */
+let FONTS = FALLBACK_FONTS.slice();
+const combo = document.getElementById('combo');
+const fontSearch = document.getElementById('fontSearch');
+const fontList = document.getElementById('fontList');
+let comboActive = -1, comboMatches = [];
+
+function renderCombo(q){
+  q = (q||'').trim().toLowerCase();
+  comboMatches = (q ? FONTS.filter(f=>f.family.toLowerCase().includes(q)) : FONTS).slice(0, 60);
+  fontList.innerHTML = '';
+  comboMatches.forEach((f, idx)=>{
+    const d = document.createElement('div');
+    d.className = 'combo-item' + (idx===comboActive?' active':'');
+    d.innerHTML = `<span>${f.family}</span><span class="cat">${f.category||''}</span>`;
+    d.onclick = () => pickFont(f);
+    fontList.appendChild(d);
+  });
+  fontList.classList.toggle('open', comboMatches.length>0);
+}
+function pickFont(f){
+  fontSearch.value = f.family;
+  fontList.classList.remove('open');
+  const url = expoUrl(f.id, f.family, f.weights||[400]);
+  loadFontFromUrl(url, f.family, url);
+}
+fontSearch.addEventListener('focus', ()=>renderCombo(fontSearch.value));
+fontSearch.addEventListener('input', ()=>{ comboActive=-1; renderCombo(fontSearch.value); });
+fontSearch.addEventListener('keydown', (e)=>{
+  if(e.key==='ArrowDown'){ comboActive=Math.min(comboActive+1, comboMatches.length-1); renderCombo(fontSearch.value); e.preventDefault(); }
+  else if(e.key==='ArrowUp'){ comboActive=Math.max(comboActive-1,0); renderCombo(fontSearch.value); e.preventDefault(); }
+  else if(e.key==='Enter'){ if(comboMatches[comboActive]) pickFont(comboMatches[comboActive]); else if(comboMatches[0]) pickFont(comboMatches[0]); }
+  else if(e.key==='Escape'){ fontList.classList.remove('open'); }
+});
+document.addEventListener('click', (e)=>{ if(!combo.contains(e.target)) fontList.classList.remove('open'); });
+
+async function loadFontList(){
+  try{
+    const data = await fetch('https://api.fontsource.org/v1/fonts').then(r=>r.json());
+    const list = data
+      .filter(f=>f.type==='google' && Array.isArray(f.weights) && f.weights.length)
+      .map(f=>({id:f.id, family:f.family, weights:f.weights, category:f.category}));
+    if(list.length){ FONTS = list; }
+  }catch(e){ /* keep fallback list */ }
+}
+
+/* ============================================================
+   Letter-spacing editor
+   ============================================================ */
+const strip = document.getElementById('strip');
+let selected = -1;
+
+function ensureGaps(){
+  const need = Math.max(0, state.text.length - 1);
+  if(state.gaps.length > need) state.gaps.length = need;
+  while(state.gaps.length < need) state.gaps.push(0);
+}
+
+function renderEditor(){
+  ensureGaps();
+  strip.innerHTML = '';
+  const text = state.text;
+  if(!text.length){ strip.innerHTML = '<div class="empty-strip">Type something above ↑</div>'; return; }
+
+  let vis = 0;
+  for(let i=0;i<text.length;i++){
+    const ch = text[i];
+    const g = document.createElement('div');
+    g.className = 'glyph' + (i===selected?' sel':'');
+
+    const c = document.createElement('div');
+    c.className = 'ch';
+    c.style.fontFamily = "'preview-font', sans-serif";
+    c.textContent = ch===' ' ? ' ' : ch;
+    if(ch !== ' '){
+      c.classList.add(vis%2===0 ? 'odd' : 'even');
+      vis++;
+    }
+    c.onclick = ()=>{ selected = i; renderEditor(); };
+    g.appendChild(c);
+
+    const tag = document.createElement('div');
+    tag.className='tag';
+    tag.textContent = ch===' ' ? 'space' : '';
+    g.appendChild(tag);
+    strip.appendChild(g);
+
+    // handle after each letter except the last
+    if(i < text.length-1){
+      const h = document.createElement('div');
+      h.className = 'handle';
+      h.style.minWidth = (14 + Math.max(0,state.gaps[i])*2) + 'px';
+      const bar = document.createElement('div'); bar.className='bar'; h.appendChild(bar);
+      const val = document.createElement('div'); val.className='val'; h.appendChild(val);
+      attachHandleDrag(h, val, i);
+      strip.appendChild(h);
+    }
+  }
+}
+
+function attachHandleDrag(h, val, idx){
+  const PXPMM = 2.2;
+  let startX=0, startGap=0, dragging=false;
+  const down = (e)=>{
+    dragging=true; h.classList.add('drag');
+    startX = (e.touches?e.touches[0].clientX:e.clientX);
+    startGap = state.gaps[idx]||0;
+    val.textContent = startGap.toFixed(1)+' mm';
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    e.preventDefault();
+  };
+  const move = (e)=>{
+    if(!dragging) return;
+    const x = e.clientX;
+    let ng = startGap + (x-startX)/PXPMM;
+    ng = Math.max(-state.size*0.8, Math.min(state.size*2.5, ng));
+    state.gaps[idx] = Math.round(ng*10)/10;
+    h.style.minWidth = (14 + Math.max(0,state.gaps[idx])*2) + 'px';
+    val.textContent = state.gaps[idx].toFixed(1)+' mm';
+    scheduleRebuild(30);
+  };
+  const up = ()=>{
+    dragging=false; h.classList.remove('drag');
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+    scheduleRebuild(0);
+  };
+  h.addEventListener('pointerdown', down);
+}
+
+/* ============================================================
+   UI wiring
+   ============================================================ */
+const $ = id => document.getElementById(id);
+function bindRange(id, key, valId, fmt=(v)=>v, transform=(v)=>v){
+  const el = $(id), out = $(valId);
+  el.addEventListener('input', ()=>{
+    state[key] = transform(parseFloat(el.value));
+    if(out) out.textContent = fmt(parseFloat(el.value));
+    scheduleRebuild();
+  });
+}
+bindRange('size','size','sizeV');
+bindRange('oddH','oddH','oddV');
+bindRange('evenH','evenH','evenV');
+bindRange('pencil','pencil','pencilV');
+bindRange('holePos','holePos','holeV', v=>v, v=>v/100);
+bindRange('holeZ','holeZ','holeZV', v=>v, v=>v/100);
+bindRange('spacing','spacing','spaceV');
+
+$('holePos').addEventListener('input', ()=>{ $('holeV').textContent = $('holePos').value; });
+$('holeZ').addEventListener('input', ()=>{ $('holeZV').textContent = $('holeZ').value; });
+
+$('text').addEventListener('input', (e)=>{
+  state.text = e.target.value;
+  selected = -1;
+  renderEditor();
+  scheduleRebuild(50);
+});
+
+$('bevel').addEventListener('change', e=>{ state.bevel = e.target.checked; scheduleRebuild(); });
+$('showPencil').addEventListener('change', e=>{ state.showPencil = e.target.checked; rebuild(); });
+
+$('fontFile').addEventListener('change', e=>{ if(e.target.files[0]) loadFontFromFile(e.target.files[0]); });
+
+$('resetSpace').addEventListener('click', ()=>{ state.gaps = state.gaps.map(()=>0); state.spacing=0; $('spacing').value=0; $('spaceV').textContent='0'; renderEditor(); scheduleRebuild(0); });
+$('recenter').addEventListener('click', frameCamera);
+
+// colour swatches
+const COLORS = [0xffcf3f,0x6ea8ff,0xff6b6b,0x8ce99a,0xf783ac,0xffffff,0x2b2d33];
+const colorsEl = $('colors');
+COLORS.forEach((c,i)=>{
+  const d = document.createElement('div');
+  d.className='color'+(c===state.color?' sel':'');
+  d.style.background = '#'+c.toString(16).padStart(6,'0');
+  d.onclick = ()=>{
+    state.color = c; material.color.setHex(c);
+    colorsEl.querySelectorAll('.color').forEach(x=>x.classList.remove('sel'));
+    d.classList.add('sel');
+  };
+  colorsEl.appendChild(d);
+});
+
+// download STL
+$('download').addEventListener('click', ()=>{
+  if(!wordGroup.children.length){ showError('Nothing to export yet.'); return; }
+  const hadGuide = pencilGuide && pencilGuide.parent === wordGroup;
+  if(hadGuide) wordGroup.remove(pencilGuide);   // don't bake the guide rod into the STL
+
+  // Export Z-up (slicer convention). The letters are authored with thickness along +Z and the
+  // flat base at Z=0, so drop the viewer's Y-up "lay-flat" rotation and export local coords —
+  // otherwise slicers (which treat Z as vertical) stand the flat face on edge, off the bed.
+  const savedRot = wordGroup.rotation.clone();
+  const savedPos = wordGroup.position.clone();
+  wordGroup.rotation.set(0,0,0);
+  wordGroup.position.set(0,0,0);
+  wordGroup.updateMatrixWorld(true);
+
+  const data = new STLExporter().parse(wordGroup, {binary:true});
+
+  wordGroup.rotation.copy(savedRot);
+  wordGroup.position.copy(savedPos);
+  wordGroup.updateMatrixWorld(true);
+  if(hadGuide) wordGroup.add(pencilGuide);
+  const blob = new Blob([data], {type:'application/octet-stream'});
+  saveBlob(blob, (state.text.replace(/[^a-z0-9]/gi,'_')||'text') + '_pencil.stl');
+});
+
+/* ============================================================
+   PENDANT KEY mode — clicker fidget generator.
+   Switch-socket dimensions reverse-engineered from the
+   "Flower Fidget Initial A-Z Keychains" 3MF (MX-style switch).
+   ============================================================ */
+// Original 35mm flower cap outline (extracted from the model) — built-in shape.
+const PD_FLOWER = [[6.522,12.791],[6.567,12.545],[6.608,12.299],[6.646,12.052],[6.680,11.804],[6.716,11.557],[6.757,11.310],[6.799,11.064],[6.843,10.818],[6.892,10.573],[6.953,10.331],[7.034,10.095],[7.136,9.867],[7.262,9.651],[7.428,9.466],[7.649,9.354],[7.894,9.310],[8.143,9.305],[8.391,9.335],[8.633,9.396],[8.872,9.472],[9.109,9.549],[9.346,9.629],[9.580,9.717],[9.814,9.804],[10.049,9.888],[10.286,9.970],[10.524,10.046],[10.764,10.114],[11.006,10.175],[11.250,10.229],[11.496,10.275],[11.743,10.314],[11.991,10.344],[12.240,10.366],[12.489,10.379],[12.739,10.382],[12.989,10.376],[13.238,10.360],[13.487,10.333],[13.734,10.295],[13.979,10.246],[14.221,10.186],[14.461,10.114],[14.696,10.031],[14.927,9.935],[15.152,9.828],[15.372,9.708],[15.584,9.576],[15.787,9.431],[15.982,9.274],[16.167,9.107],[16.345,8.931],[16.512,8.745],[16.667,8.550],[16.809,8.344],[16.938,8.130],[17.054,7.908],[17.156,7.680],[17.244,7.447],[17.319,7.208],[17.379,6.966],[17.426,6.720],[17.460,6.473],[17.481,6.224],[17.487,5.974],[17.477,5.724],[17.455,5.475],[17.422,5.228],[17.377,4.982],[17.320,4.739],[17.251,4.499],[17.173,4.261],[17.086,4.027],[16.991,3.796],[16.888,3.568],[16.775,3.346],[16.653,3.127],[16.523,2.914],[16.387,2.705],[16.243,2.500],[16.093,2.300],[15.938,2.105],[15.776,1.914],[15.610,1.727],[15.438,1.546],[15.261,1.370],[15.084,1.193],[14.904,1.020],[14.734,0.837],[14.575,0.644],[14.421,0.447],[14.276,0.244],[14.148,0.030],[14.040,-0.195],[13.948,-0.428],[13.868,-0.664],[13.806,-0.906],[13.766,-1.153],[13.752,-1.402],[13.761,-1.651],[13.791,-1.899],[13.840,-2.144],[13.905,-2.385],[13.990,-2.620],[14.098,-2.845],[14.223,-3.061],[14.357,-3.272],[14.497,-3.479],[14.650,-3.676],[14.813,-3.866],[14.973,-4.058],[15.133,-4.250],[15.288,-4.446],[15.437,-4.646],[15.580,-4.851],[15.715,-5.061],[15.842,-5.276],[15.963,-5.495],[16.078,-5.717],[16.187,-5.942],[16.290,-6.169],[16.386,-6.400],[16.472,-6.635],[16.548,-6.873],[16.614,-7.114],[16.672,-7.357],[16.719,-7.602],[16.752,-7.850],[16.770,-8.099],[16.779,-8.349],[16.779,-8.599],[16.770,-8.849],[16.745,-9.097],[16.704,-9.344],[16.648,-9.587],[16.580,-9.828],[16.499,-10.064],[16.405,-10.295],[16.296,-10.520],[16.173,-10.738],[16.038,-10.948],[15.891,-11.150],[15.736,-11.346],[15.571,-11.533],[15.390,-11.706],[15.198,-11.866],[14.999,-12.017],[14.795,-12.161],[14.583,-12.293],[14.362,-12.409],[14.134,-12.512],[13.901,-12.602],[13.664,-12.681],[13.424,-12.750],[13.181,-12.810],[12.936,-12.860],[12.690,-12.899],[12.441,-12.928],[12.192,-12.946],[11.942,-12.951],[11.692,-12.945],[11.443,-12.931],[11.194,-12.908],[10.946,-12.877],[10.700,-12.837],[10.454,-12.789],[10.211,-12.733],[9.969,-12.670],[9.729,-12.602],[9.490,-12.527],[9.253,-12.448],[9.018,-12.363],[8.785,-12.272],[8.554,-12.177],[8.325,-12.078],[8.097,-11.975],[7.872,-11.867],[7.646,-11.760],[7.420,-11.653],[7.193,-11.550],[6.964,-11.448],[6.734,-11.351],[6.503,-11.257],[6.268,-11.170],[6.031,-11.093],[5.816,-11.129],[5.712,-11.357],[5.612,-11.586],[5.512,-11.814],[5.408,-12.042],[5.302,-12.268],[5.192,-12.492],[5.079,-12.715],[4.962,-12.936],[4.843,-13.156],[4.722,-13.375],[4.597,-13.591],[4.468,-13.805],[4.333,-14.015],[4.194,-14.223],[4.052,-14.429],[3.907,-14.632],[3.758,-14.833],[3.602,-15.028],[3.440,-15.218],[3.275,-15.406],[3.105,-15.589],[2.931,-15.769],[2.752,-15.942],[2.566,-16.110],[2.375,-16.271],[2.178,-16.425],[1.976,-16.571],[1.768,-16.710],[1.554,-16.839],[1.335,-16.959],[1.111,-17.069],[0.881,-17.167],[0.647,-17.254],[0.408,-17.328],[0.166,-17.390],[-0.079,-17.439],[-0.327,-17.469],[-0.577,-17.483],[-0.826,-17.487],[-1.076,-17.477],[-1.325,-17.454],[-1.571,-17.413],[-1.814,-17.356],[-2.054,-17.286],[-2.292,-17.207],[-2.525,-17.118],[-2.753,-17.017],[-2.976,-16.904],[-3.193,-16.779],[-3.404,-16.646],[-3.612,-16.507],[-3.815,-16.361],[-4.014,-16.210],[-4.208,-16.053],[-4.396,-15.889],[-4.577,-15.716],[-4.750,-15.536],[-4.914,-15.347],[-5.067,-15.149],[-5.209,-14.944],[-5.337,-14.729],[-5.453,-14.508],[-5.555,-14.280],[-5.643,-14.046],[-5.719,-13.808],[-5.784,-13.567],[-5.836,-13.323],[-5.879,-13.076],[-5.915,-12.829],[-5.943,-12.581],[-5.964,-12.332],[-5.981,-12.083],[-5.992,-11.833],[-5.999,-11.583],[-6.001,-11.333],[-6.002,-11.083],[-6.002,-10.833],[-6.004,-10.584],[-6.012,-10.334],[-6.021,-10.084],[-6.032,-9.834],[-6.054,-9.586],[-6.093,-9.339],[-6.151,-9.096],[-6.236,-8.862],[-6.404,-8.682],[-6.643,-8.626],[-6.890,-8.656],[-7.125,-8.740],[-7.350,-8.850],[-7.572,-8.965],[-7.792,-9.082],[-8.009,-9.206],[-8.226,-9.330],[-8.445,-9.450],[-8.666,-9.567],[-8.889,-9.680],[-9.115,-9.786],[-9.345,-9.885],[-9.578,-9.976],[-9.814,-10.056],[-10.053,-10.128],[-10.295,-10.192],[-10.538,-10.249],[-10.783,-10.301],[-11.029,-10.345],[-11.276,-10.382],[-11.524,-10.409],[-11.773,-10.426],[-12.023,-10.432],[-12.273,-10.428],[-12.523,-10.414],[-12.771,-10.390],[-13.019,-10.355],[-13.265,-10.311],[-13.508,-10.255],[-13.749,-10.189],[-13.987,-10.112],[-14.221,-10.025],[-14.451,-9.927],[-14.676,-9.819],[-14.896,-9.701],[-15.111,-9.573],[-15.319,-9.434],[-15.520,-9.286],[-15.715,-9.130],[-15.903,-8.965],[-16.083,-8.791],[-16.251,-8.607],[-16.410,-8.414],[-16.559,-8.214],[-16.699,-8.007],[-16.830,-7.794],[-16.949,-7.574],[-17.058,-7.349],[-17.154,-7.119],[-17.239,-6.884],[-17.312,-6.645],[-17.370,-6.402],[-17.415,-6.156],[-17.448,-5.908],[-17.471,-5.659],[-17.484,-5.410],[-17.486,-5.160],[-17.472,-4.911],[-17.441,-4.663],[-17.398,-4.417],[-17.343,-4.173],[-17.278,-3.932],[-17.202,-3.694],[-17.115,-3.459],[-17.017,-3.229],[-16.910,-3.004],[-16.793,-2.783],[-16.667,-2.567],[-16.533,-2.357],[-16.390,-2.151],[-16.240,-1.951],[-16.083,-1.757],[-15.920,-1.568],[-15.750,-1.385],[-15.574,-1.207],[-15.393,-1.035],[-15.208,-0.867],[-15.018,-0.705],[-14.824,-0.547],[-14.628,-0.392],[-14.430,-0.240],[-14.229,-0.092],[-14.026,0.054],[-13.821,0.198],[-13.617,0.341],[-13.413,0.486],[-13.210,0.631],[-13.008,0.779],[-12.809,0.930],[-12.613,1.085],[-12.422,1.247],[-12.240,1.417],[-12.076,1.605],[-11.948,1.819],[-11.908,2.063],[-11.982,2.300],[-12.123,2.505],[-12.293,2.688],[-12.475,2.860],[-12.661,3.026],[-12.846,3.195],[-13.027,3.367],[-13.205,3.542],[-13.381,3.720],[-13.552,3.902],[-13.720,4.087],[-13.882,4.277],[-14.040,4.471],[-14.191,4.670],[-14.336,4.874],[-14.474,5.082],[-14.605,5.294],[-14.729,5.511],[-14.845,5.733],[-14.953,5.958],[-15.052,6.187],[-15.143,6.420],[-15.224,6.656],[-15.296,6.896],[-15.357,7.138],[-15.408,7.383],[-15.447,7.629],[-15.476,7.878],[-15.493,8.127],[-15.498,8.377],[-15.491,8.626],[-15.471,8.876],[-15.440,9.123],[-15.395,9.369],[-15.339,9.613],[-15.270,9.853],[-15.188,10.089],[-15.094,10.320],[-14.988,10.547],[-14.870,10.767],[-14.739,10.980],[-14.596,11.184],[-14.443,11.382],[-14.281,11.573],[-14.113,11.757],[-13.934,11.932],[-13.743,12.093],[-13.543,12.243],[-13.336,12.382],[-13.122,12.512],[-12.903,12.631],[-12.677,12.739],[-12.447,12.835],[-12.211,12.918],[-11.972,12.990],[-11.729,13.051],[-11.485,13.103],[-11.239,13.148],[-10.992,13.181],[-10.743,13.201],[-10.493,13.208],[-10.243,13.204],[-9.993,13.192],[-9.744,13.172],[-9.496,13.142],[-9.249,13.105],[-9.004,13.058],[-8.760,13.003],[-8.518,12.939],[-8.279,12.868],[-8.041,12.790],[-7.806,12.706],[-7.573,12.616],[-7.341,12.522],[-7.112,12.424],[-6.884,12.321],[-6.656,12.217],[-6.427,12.118],[-6.198,12.018],[-5.968,11.920],[-5.734,11.832],[-5.496,11.757],[-5.255,11.692],[-5.011,11.638],[-4.764,11.606],[-4.515,11.612],[-4.271,11.664],[-4.040,11.759],[-3.839,11.905],[-3.679,12.096],[-3.553,12.311],[-3.443,12.536],[-3.353,12.769],[-3.280,13.007],[-3.204,13.246],[-3.130,13.484],[-3.047,13.720],[-2.953,13.951],[-2.852,14.180],[-2.744,14.405],[-2.630,14.627],[-2.507,14.845],[-2.377,15.059],[-2.240,15.267],[-2.094,15.470],[-1.940,15.667],[-1.777,15.857],[-1.607,16.039],[-1.429,16.214],[-1.242,16.381],[-1.048,16.538],[-0.846,16.685],[-0.637,16.822],[-0.421,16.948],[-0.199,17.062],[0.030,17.163],[0.263,17.251],[0.503,17.324],[0.745,17.382],[0.991,17.430],[1.238,17.466],[1.487,17.487],[1.737,17.488],[1.986,17.474],[2.234,17.446],[2.481,17.404],[2.724,17.347],[2.964,17.277],[3.199,17.193],[3.429,17.095],[3.653,16.985],[3.871,16.863],[4.082,16.729],[4.285,16.583],[4.481,16.427],[4.667,16.261],[4.845,16.085],[5.015,15.903],[5.178,15.713],[5.333,15.518],[5.480,15.315],[5.616,15.106],[5.744,14.891],[5.863,14.671],[5.973,14.447],[6.076,14.219],[6.171,13.988],[6.259,13.754],[6.338,13.517],[6.408,13.277],[6.469,13.035]];
+// Cap underside socket (fixed, measured): inclined rectangular pocket that clears the switch's
+// tapered top housing — 14.89×13.34 at the mouth narrowing to 11.73×10.14 at the ceiling (3mm deep,
+// ~30° incline = printable + smaller bridge) — with a Ø5.6 boss + cross hole standing in the middle.
+const PD_CAP_SOCKET = {
+  mouthW:14.89, mouthH:13.34, topW:11.73, topH:10.14,
+  bossR:2.802, crossL:2.105, crossW:0.701, depth:3.0
+};
+// Base switch shaft (fixed): X width steps per z above the pocket floor F; Y width constant.
+const PD_SHAFT_Y = 14.30;
+const PD_SHAFT_STEPS = [           // [z0, z1, w0, w1]
+  [0.00, 3.52, 14.75, 14.75],
+  [3.52, 3.92, 14.75, 13.85],
+  [3.92, 4.52, 13.85, 13.85],
+  [4.52, 5.42, 13.85, 15.77],
+  [5.42, 7.82, 15.77, 15.77],
+  [7.82, 8.42, 15.77, 16.75],
+];
+const PD_NUB = { half:2.65, below:2.58, straight:1.75, mouthScale:6.9/5.3 }; // recess for the switch's bottom nub
+const PD_FLOOR_ABOVE_WEB = 2.58;      // pocket floor above the base bottom web
+const PD_CAVITY_ABOVE_WEB = 11.0;     // cavity floor above web (= floor + 8.42)
+const PD_STEM_TOP_ABOVE_FLOOR = 15.4; // MX stem top (unpressed) above the switch resting floor
+const PD_MOUTH = { w:16.8, h:14.35 }; // pocket mouth footprint, for fit warnings
+
+const pd = {
+  shape:'flower', width:35, svgPolys:null, svgName:'',
+  gap:0.4, wallT:3, wallH:6, web:1,
+  ringOn:true, ringHole:6, ringBand:2.2, ringTh:3, ringZ:0,
+  letter:'A', capTh:6, letterH:2, letterScale:55,
+  show:{ base:true, cap:true, switch:true }, explode:0,
+};
+state.mode = 'pencil';
+const lastBadge = { pencil:'—', pendant:'—' };
+
+const pendantGroup = new THREE.Group();
+pendantGroup.rotation.x = -Math.PI/2;    // authored Z-up, viewed Y-up (same as the word)
+pendantGroup.visible = false;
+scene.add(pendantGroup);
+
+const pdBaseMat = new THREE.MeshStandardMaterial({color:0xd7dbe4, metalness:0.1,  roughness:0.6});
+const pdCapMat  = new THREE.MeshStandardMaterial({color:0xffcf3f, metalness:0.15, roughness:0.55});
+const pdSwMat   = new THREE.MeshStandardMaterial({color:0x9aa0ae, metalness:0.2,  roughness:0.5});
+const pdStemMat = new THREE.MeshStandardMaterial({color:0xc25454, metalness:0.1,  roughness:0.5});
+
+let pdBaseGeo=null, pdCapGeo=null, pdGhostBodyGeo=null, pdGhostStemGeo=null;
+let pdBaseMesh=null, pdCapMesh=null, pdGhostBodyMesh=null, pdGhostStemMesh=null, pdGhost=null;
+let pdSolids=null;        // kept Manifold solids {base, cap, gBody, gStem} for true capped slicing
+let pdSliceGeos=[];       // trimmed display geometries currently swapped in
+let pdCapBottomZ=0, pendantTimer=null, pendantDirty=true, hasFramedPendant=false;
+function pdSchedule(delay=120){ clearTimeout(pendantTimer); pendantTimer=setTimeout(pendantRebuild, delay); }
+function pendantFontRefresh(){ if(state.mode==='pendant') pdSchedule(0); else pendantDirty=true; }
+
+/* ---------- shape sources → polygons (centered, scaled to width) ---------- */
+function pdBuiltinPolys(kind){
+  if(kind==='flower') return [PD_FLOWER];
+  const pts=[];
+  if(kind==='circle'){ for(let i=0;i<144;i++){ const a=i/144*Math.PI*2; pts.push([Math.cos(a)*17.5, Math.sin(a)*17.5]); } }
+  else if(kind==='square'){
+    const h=15, r=6;
+    const cs=[[h-r,h-r,0],[-(h-r),h-r,Math.PI/2],[-(h-r),-(h-r),Math.PI],[h-r,-(h-r),3*Math.PI/2]];
+    for(const [ccx,ccy,a0] of cs) for(let i=0;i<=24;i++){ const a=a0-Math.PI/2+i/24*Math.PI/2; pts.push([ccx+Math.cos(a)*r, ccy+Math.sin(a)*r]); }
+  }
+  else if(kind==='heart'){
+    for(let i=0;i<240;i++){ const t=i/240*Math.PI*2;
+      pts.push([16*Math.pow(Math.sin(t),3), 13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t)]); }
+  }
+  return [pts];
+}
+function pdShapePolys(){
+  const src = (pd.shape==='svg' && pd.svgPolys) ? pd.svgPolys : pdBuiltinPolys(pd.shape==='svg' ? 'flower' : pd.shape);
+  let minX=1e9,maxX=-1e9,minY=1e9,maxY=-1e9;
+  for(const c of src) for(const [x,y] of c){ if(x<minX)minX=x; if(x>maxX)maxX=x; if(y<minY)minY=y; if(y>maxY)maxY=y; }
+  const w=maxX-minX||1, s=pd.width/w, cx=(minX+maxX)/2, cy=(minY+maxY)/2;
+  return { polys: src.map(c=>c.map(p=>[(p[0]-cx)*s, (p[1]-cy)*s])), w:pd.width, h:(maxY-minY)*s };
+}
+function pdCrossPoly(L,W){ return [[L,W],[W,W],[W,L],[-W,L],[-W,W],[-L,W],[-L,-W],[-W,-W],[-W,-L],[W,-L],[W,-W],[L,-W]]; }
+
+function pdTextPolys(txt){
+  const upm = currentFont.unitsPerEm || 1000;
+  const size = 100; let x = 0; const polys=[];
+  for(const ch of txt){
+    const g = currentFont.charToGlyph(ch);
+    for(const sh of glyphToShapes(g.getPath(x, 0, size))){
+      const p = sh.extractPoints(12);
+      polys.push(p.shape.map(v=>[v.x,v.y]));
+      for(const h of p.holes) polys.push(h.map(v=>[v.x,v.y]));
+    }
+    x += (g.advanceWidth || upm*0.5) * (size/upm);
+  }
+  if(!polys.length) return null;
+  let minX=1e9,maxX=-1e9,minY=1e9,maxY=-1e9;
+  for(const c of polys) for(const [px,py] of c){ if(px<minX)minX=px; if(px>maxX)maxX=px; if(py<minY)minY=py; if(py>maxY)maxY=py; }
+  return { polys, cx:(minX+maxX)/2, cy:(minY+maxY)/2, h:maxY-minY };
+}
+
+function pdPlaceCap(){ if(pdCapMesh) pdCapMesh.position.z = pdCapBottomZ + pd.explode; }
+
+// Build one key-cap solid (shape − fixed stem socket + letter). Used by the live preview
+// and by bulk export so both produce identical geometry. Intermediates are tracked via T;
+// the returned solid is tracked too — caller splices it out of the trash if it keeps it.
+function pdMakeCapSolid(C0, shapeW, shapeH, letterText, T){
+  // Socket = inclined rectangular pocket (clears the switch's tapered top housing, ~30° walls
+  // for printability) with the Ø5.6 boss + cross hole standing in its centre.
+  let cap = T(C0.extrude(pd.capTh));
+  const sockDepth = Math.min(PD_CAP_SOCKET.depth, pd.capTh-1.2);
+  const slopeK = sockDepth / PD_CAP_SOCKET.depth;   // keep the same wall incline on thin caps
+  const topW = PD_CAP_SOCKET.mouthW - (PD_CAP_SOCKET.mouthW - PD_CAP_SOCKET.topW) * slopeK;
+  const topH = PD_CAP_SOCKET.mouthH - (PD_CAP_SOCKET.mouthH - PD_CAP_SOCKET.topH) * slopeK;
+  const mouth2Dc = T(CrossSection.square([PD_CAP_SOCKET.mouthW, PD_CAP_SOCKET.mouthH], true));
+  const frustum = T(mouth2Dc.extrude(sockDepth, 0, 0, [topW/PD_CAP_SOCKET.mouthW, topH/PD_CAP_SOCKET.mouthH], false));
+  const boss = T(T(CrossSection.circle(PD_CAP_SOCKET.bossR, 64)).extrude(sockDepth));
+  const cross3D = T(T(new CrossSection([pdCrossPoly(PD_CAP_SOCKET.crossL, PD_CAP_SOCKET.crossW)], 'EvenOdd')).extrude(sockDepth));
+  const capNeg = T(Manifold.union(T(frustum.subtract(boss)), cross3D));
+  cap = T(cap.subtract(capNeg));
+  const txt = (letterText||'').trim();
+  if(txt && pd.letterH > 0.01 && currentFont){
+    const lp = pdTextPolys(txt);
+    if(lp){
+      const s = (Math.min(shapeW,shapeH) * pd.letterScale/100) / Math.max(lp.h, 1e-6);
+      const scaled = lp.polys.map(c=>c.map(([px,py])=>[(px-lp.cx)*s, (py-lp.cy)*s]));
+      const LCS = T(new CrossSection(scaled, 'EvenOdd'));
+      cap = T(Manifold.union(cap, T(T(LCS.extrude(pd.letterH)).translate([0,0,pd.capTh]))));
+    }
+  }
+  return cap;
+}
+
+/* ---------- build ---------- */
+function pendantRebuild(){
+  if(!Manifold || !CrossSection) return;
+  pendantDirty = false;
+  const trash=[]; const T=o=>(trash.push(o),o);
+  try{
+    for(const m of [...pendantGroup.children]) pendantGroup.remove(m);
+    for(const g of [pdBaseGeo, pdCapGeo, pdGhostBodyGeo, pdGhostStemGeo, ...pdSliceGeos]) if(g) g.dispose();
+    pdBaseGeo=pdCapGeo=pdGhostBodyGeo=pdGhostStemGeo=null; pdSliceGeos=[];
+    pdBaseMesh=pdCapMesh=pdGhostBodyMesh=pdGhostStemMesh=null; pdGhost=null;
+    if(pdSolids){ for(const s of Object.values(pdSolids)){ try{s.delete()}catch(_){} } pdSolids=null; }
+
+    const {polys, w:shapeW, h:shapeH} = pdShapePolys();
+    const C0 = T(new CrossSection(polys, 'EvenOdd'));
+    const C1 = T(C0.offset(pd.gap, 'Round', 2, 64));
+    const C2 = T(C1.offset(pd.wallT, 'Round', 2, 64));
+    const b2 = C2.bounds();
+
+    const F = pd.web + PD_FLOOR_ABOVE_WEB;         // switch resting floor
+    const cavityZ = pd.web + PD_CAVITY_ABOVE_WEB;  // cavity floor (top of solid body)
+
+    // ---- base: body + wall + ring, minus the fixed switch socket ----
+    let base = T(C2.extrude(cavityZ));
+    if(pd.wallH > 0.01){
+      const ring2D = T(C2.subtract(C1));
+      base = T(Manifold.union(base, T(T(ring2D.extrude(pd.wallH)).translate([0,0,cavityZ]))));
+    }
+    if(pd.ringOn){
+      const oR = pd.ringHole/2 + pd.ringBand;
+      const loop2D = T(T(CrossSection.circle(oR,48)).subtract(T(CrossSection.circle(pd.ringHole/2,48))));
+      const cy = b2.max[1] + oR - pd.ringBand - 0.6;     // overlap into the wall so it welds on
+      const totalH = cavityZ + pd.wallH;
+      const rz = Math.max(0, (totalH - pd.ringTh) * pd.ringZ / 100);   // 0% = flush with bottom, 100% = flush with top
+      base = T(Manifold.union(base, T(T(loop2D.extrude(pd.ringTh)).translate([0,cy,rz]))));
+    }
+    const negs=[];
+    const nub2D = T(CrossSection.square([PD_NUB.half*2, PD_NUB.half*2], true));
+    negs.push(T(T(nub2D.extrude(PD_NUB.straight)).translate([0,0,F-PD_NUB.below])));
+    negs.push(T(T(nub2D.extrude(PD_NUB.below-PD_NUB.straight, 0, 0, [PD_NUB.mouthScale,PD_NUB.mouthScale], false)).translate([0,0,F-PD_NUB.below+PD_NUB.straight])));
+    for(const [z0,z1,w0,w1] of PD_SHAFT_STEPS){
+      const s2D = T(CrossSection.square([w0, PD_SHAFT_Y], true));
+      negs.push(T(T(s2D.extrude(z1-z0, 0, 0, [w1/w0, 1], false)).translate([0,0,F+z0])));
+    }
+    let socket = negs[0];
+    for(let i=1;i<negs.length;i++) socket = T(Manifold.union(socket, negs[i]));
+    base = T(base.subtract(socket));
+
+    // ---- key (cap): shape minus fixed stem socket, plus letter (shared with bulk export) ----
+    const cap = pdMakeCapSolid(C0, shapeW, shapeH, pd.letter, T);
+    const sockDepth = Math.min(PD_CAP_SOCKET.depth, pd.capTh-1.2);
+    const txt = (pd.letter||'').trim();
+
+    // ---- ghost switch as real solids too, so slice mode can cap-cut it ----
+    const gb1 = T(T(Manifold.cube([13.9,13.9,5.2],true)).translate([0,0,F+2.6]));
+    const gb2 = T(T(Manifold.cube([15.5,15.5,1.0],true)).translate([0,0,F+5.7]));
+    const gb3 = T(T(T(Manifold.cylinder(5.6, 9.6, 7.0, 4, true)).rotate([0,0,45])).translate([0,0,F+9.0]));
+    const gBody = T(Manifold.union(T(Manifold.union(gb1,gb2)), gb3));
+    const gs1 = T(T(Manifold.cube([4.2,1.3,3.6],true)).translate([0,0,F+PD_STEM_TOP_ABOVE_FLOOR-1.8]));
+    const gs2 = T(T(Manifold.cube([1.3,4.2,3.6],true)).translate([0,0,F+PD_STEM_TOP_ABOVE_FLOOR-1.8]));
+    const gStem = T(Manifold.union(gs1,gs2));
+
+    // ---- meshes ----
+    pdBaseGeo = manifoldToGeometry(base.getMesh());
+    pdCapGeo  = manifoldToGeometry(cap.getMesh());
+    pdGhostBodyGeo = manifoldToGeometry(gBody.getMesh());
+    pdGhostStemGeo = manifoldToGeometry(gStem.getMesh());
+    pdBaseMesh = new THREE.Mesh(pdBaseGeo, pdBaseMat);
+    pdBaseMesh.castShadow = pdBaseMesh.receiveShadow = true;
+    pendantGroup.add(pdBaseMesh);
+    pdCapMesh = new THREE.Mesh(pdCapGeo, pdCapMat);
+    pdCapMesh.castShadow = pdCapMesh.receiveShadow = true;
+    pdCapBottomZ = F + PD_STEM_TOP_ABOVE_FLOOR - sockDepth;
+    pendantGroup.add(pdCapMesh);
+    pdPlaceCap();
+    pdGhostBodyMesh = new THREE.Mesh(pdGhostBodyGeo, pdSwMat); pdGhostBodyMesh.castShadow = true;
+    pdGhostStemMesh = new THREE.Mesh(pdGhostStemGeo, pdStemMat); pdGhostStemMesh.castShadow = true;
+    pdGhost = new THREE.Group(); pdGhost.name = 'switchGhost';
+    pdGhost.add(pdGhostBodyMesh, pdGhostStemMesh);
+    pendantGroup.add(pdGhost);
+    pdApplyVisibility();
+
+    // keep the final solids alive for true capped slicing (everything else gets freed below)
+    pdSolids = { base, cap, gBody, gStem };
+    for(const s of Object.values(pdSolids)){ const i = trash.indexOf(s); if(i>=0) trash.splice(i,1); }
+    pdApplySlice();
+
+    // ---- badge + fit warnings (real geometric containment, not bounding boxes) ----
+    const mouth2D = T(CrossSection.square([PD_MOUTH.w, PD_MOUTH.h], true));
+    let warn = '';
+    if(T(mouth2D.subtract(C1)).area() > 0.5)
+      warn = ' · <span style="color:var(--danger)">⚠ shape too small — pocket breaks the wall</span>';
+    else if(T(T(CrossSection.square([PD_CAP_SOCKET.mouthW, PD_CAP_SOCKET.mouthH], true)).subtract(C0)).area() > 0.5)
+      warn = ' · <span style="color:var(--danger)">⚠ shape too small — socket breaks the key edge</span>';
+    const baseW=b2.max[0]-b2.min[0], baseH=b2.max[1]-b2.min[1];
+    lastBadge.pendant = `Base <b>${baseW.toFixed(0)}×${baseH.toFixed(0)}×${(cavityZ+pd.wallH).toFixed(0)}</b> · Key <b>${shapeW.toFixed(0)}×${shapeH.toFixed(0)}×${(pd.capTh+(txt?pd.letterH:0)).toFixed(1)}</b> mm · gap <b>${pd.gap}</b>${warn}`;
+    if(state.mode==='pendant') document.getElementById('badge').innerHTML = lastBadge.pendant;
+    if(!hasFramedPendant && state.mode==='pendant'){ frameCamera(pendantGroup); hasFramedPendant=true; }
+  }catch(e){
+    showError('Pendant build failed: ' + (e.message||e));
+  }finally{
+    trash.forEach(o=>{ try{o.delete()}catch(_){} });
+  }
+}
+
+/* ---------- pendant UI ---------- */
+function pdBind(id, key, valId){
+  const el=document.getElementById(id), out=document.getElementById(valId);
+  el.addEventListener('input', ()=>{ pd[key]=parseFloat(el.value); if(out) out.textContent=el.value; pdSchedule(); });
+}
+pdBind('pdWidth','width','pdWidthV');   pdBind('pdGap','gap','pdGapV');
+pdBind('pdWallT','wallT','pdWallTV');   pdBind('pdWallH','wallH','pdWallHV');
+pdBind('pdWeb','web','pdWebV');         pdBind('pdRingHole','ringHole','pdRingHoleV');
+pdBind('pdRingBand','ringBand','pdRingBandV'); pdBind('pdRingTh','ringTh','pdRingThV');
+pdBind('pdRingZ','ringZ','pdRingZV');
+pdBind('pdCapTh','capTh','pdCapThV');   pdBind('pdLetterH','letterH','pdLetterHV');
+pdBind('pdLetterS','letterScale','pdLetterSV');
+document.getElementById('pdRingOn').addEventListener('change', e=>{ pd.ringOn=e.target.checked; pdSchedule(); });
+document.getElementById('pdLetter').addEventListener('input', e=>{ pd.letter=e.target.value; pdSchedule(); });
+// ---- per-part visibility (display only; exports are unaffected) ----
+function pdApplyVisibility(){
+  if(pdBaseMesh) pdBaseMesh.visible = pd.show.base;
+  if(pdCapMesh)  pdCapMesh.visible  = pd.show.cap;
+  if(pdGhost)    pdGhost.visible    = pd.show.switch;
+}
+document.querySelectorAll('#pdParts .shape-btn').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    const part = b.dataset.part;
+    pd.show[part] = !pd.show[part];
+    b.classList.toggle('active', pd.show[part]);
+    pdApplyVisibility();
+  });
+});
+// ---- inspection: X-ray + slice ----
+// Slice is a REAL solid cut (Manifold trimByPlane) on the kept solids, so cut faces are
+// capped, correctly shaded surfaces — not hollow clip-plane shells. Display-only: exports
+// always use the full pdBaseGeo/pdCapGeo.
+function pdApplyXray(){
+  const xray = document.getElementById('pdXray').checked;
+  [pdBaseMat, pdCapMat].forEach(m=>{ m.transparent = xray; m.opacity = xray ? 0.42 : 1; m.depthWrite = !xray; m.needsUpdate = true; });
+}
+function pdApplySlice(){
+  const on = document.getElementById('pdSlice').checked;
+  document.getElementById('pdSliceRow').style.display = on ? '' : 'none';
+  const c = parseFloat(document.getElementById('pdSlicePos').value) || 0;
+  pdSliceGeos.forEach(g=>g.dispose()); pdSliceGeos=[];
+  const items = [
+    [pdSolids && pdSolids.base,  pdBaseMesh,      pdBaseGeo],
+    [pdSolids && pdSolids.cap,   pdCapMesh,       pdCapGeo],
+    [pdSolids && pdSolids.gBody, pdGhostBodyMesh, pdGhostBodyGeo],
+    [pdSolids && pdSolids.gStem, pdGhostStemMesh, pdGhostStemGeo],
+  ];
+  for(const [solid, mesh, full] of items){
+    if(!mesh || !full) continue;
+    if(!on || !solid){ mesh.geometry = full; continue; }
+    let cut = null;
+    try{
+      if(typeof solid.trimByPlane === 'function'){
+        cut = solid.trimByPlane([0,1,0], -c);          // keep authored y ≥ -c (camera-side half removed)
+      }else{
+        const box = Manifold.cube([600,600,600], true).translate([0,-c-300,0]);
+        cut = solid.subtract(box); box.delete();
+      }
+      const mm = cut.getMesh();
+      const g = mm.triVerts.length ? manifoldToGeometry(mm) : new THREE.BufferGeometry();
+      pdSliceGeos.push(g);
+      mesh.geometry = g;
+    }catch(e){ mesh.geometry = full; }
+    finally{ if(cut){ try{cut.delete()}catch(_){} } }
+  }
+}
+let pdSliceTimer = null;
+document.getElementById('pdSlice').addEventListener('change', pdApplySlice);
+document.getElementById('pdXray').addEventListener('change', pdApplyXray);
+document.getElementById('pdSlicePos').addEventListener('input', e=>{
+  document.getElementById('pdSliceV').textContent = e.target.value;
+  clearTimeout(pdSliceTimer); pdSliceTimer = setTimeout(pdApplySlice, 30);
+});
+document.getElementById('pdExplode').addEventListener('input', e=>{ pd.explode=parseFloat(e.target.value); document.getElementById('pdExplodeV').textContent=e.target.value; pdPlaceCap(); });
+document.querySelectorAll('#pdShapes .shape-btn').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    pd.shape = b.dataset.shape;
+    document.querySelectorAll('#pdShapes .shape-btn').forEach(x=>x.classList.toggle('active', x===b));
+    document.getElementById('pdShapeHint').textContent = 'The key (cap) is exactly this shape; the base grows outward from it (gap + wall). Keep ≥ ~26×24 mm so the switch fits.';
+    pdSchedule(0);
+  });
+});
+document.getElementById('pdSvg').addEventListener('change', e=>{
+  const file = e.target.files[0]; if(!file) return;
+  const rd = new FileReader();
+  rd.onload = ()=>{
+    try{
+      const data = new SVGLoader().parse(rd.result);
+      const polys=[];
+      for(const path of data.paths){
+        for(const shape of SVGLoader.createShapes(path)){
+          const p = shape.extractPoints(24);
+          polys.push(p.shape.map(v=>[v.x,-v.y]));       // SVG Y-down → Y-up
+          for(const h of p.holes) polys.push(h.map(v=>[v.x,-v.y]));
+        }
+      }
+      if(!polys.length) throw new Error('no filled shapes found');
+      pd.svgPolys = polys; pd.svgName = file.name; pd.shape='svg';
+      document.querySelectorAll('#pdShapes .shape-btn').forEach(x=>x.classList.remove('active'));
+      document.getElementById('pdShapeHint').textContent = 'SVG: ' + file.name + ' (filled areas, holes preserved).';
+      pdSchedule(0);
+    }catch(err){ showError('Could not read SVG: ' + (err.message||err)); }
+  };
+  rd.readAsText(file);
+});
+function pdExport(geo, suffix){
+  if(!geo){ showError('Nothing built yet — open the Pendant tab first.'); return; }
+  const sc = new THREE.Scene(); sc.add(new THREE.Mesh(geo));
+  const data = new STLExporter().parse(sc, {binary:true});
+  const blob = new Blob([data], {type:'application/octet-stream'});
+  const nm = (pd.letter||'pendant').replace(/[^a-z0-9]/gi,'_') || 'pendant';
+  saveBlob(blob, nm + '_' + suffix + '.stl');
+}
+document.getElementById('pdDlBase').addEventListener('click', ()=>pdExport(pdBaseGeo,'base'));
+document.getElementById('pdDlCap').addEventListener('click', ()=>pdExport(pdCapGeo,'key'));
+
+// ---- bulk export: one key STL per comma-separated entry ----
+async function pdBulkExport(){
+  if(!Manifold || !CrossSection){ showError('3D engine not ready yet.'); return; }
+  if(!currentFont){ showError('Font not loaded yet.'); return; }
+  const letters = document.getElementById('pdBulk').value.split(',').map(s=>s.trim()).filter(Boolean);
+  if(!letters.length){ showError('Enter letters separated by commas, e.g. a,b,c'); return; }
+  const btn = document.getElementById('pdDlBulk');
+  btn.disabled = true;
+  const {polys, w:shapeW, h:shapeH} = pdShapePolys();
+  // In the sandboxed artifact, per-file downloads are blocked — ask for a folder ONCE
+  // (single user gesture) and write every STL straight into it.
+  let dir = null;
+  if(IN_IFRAME && window.showDirectoryPicker){
+    try{ dir = await window.showDirectoryPicker({ mode:'readwrite' }); }
+    catch(e){
+      if(e && e.name === 'AbortError'){ btn.disabled = false; return; }   // user cancelled
+      diagDl('bulk', 'dir picker failed — ' + ((e && e.name) || '?'));     // fall back to per-file saves
+    }
+  }
+  try{
+    for(let i=0;i<letters.length;i++){
+      showSpinner(true, `Building key ${i+1}/${letters.length} — “${letters[i]}”`);
+      await new Promise(r=>setTimeout(r, 30));            // let the spinner paint
+      const trash=[]; const T=o=>(trash.push(o),o);
+      try{
+        const C0 = T(new CrossSection(polys, 'EvenOdd'));
+        const cap = pdMakeCapSolid(C0, shapeW, shapeH, letters[i], T);
+        const geo = manifoldToGeometry(cap.getMesh());
+        const sc = new THREE.Scene(); sc.add(new THREE.Mesh(geo));
+        const blob = new Blob([new STLExporter().parse(sc, {binary:true})], {type:'application/octet-stream'});
+        const fname = 'key_' + (letters[i].replace(/[^a-z0-9]/gi,'_') || ('key'+(i+1))) + '.stl';
+        if(dir){
+          const fh = await dir.getFileHandle(fname, {create:true});
+          const w = await fh.createWritable(); await w.write(blob); await w.close();
+          diagDl(fname, 'written to chosen folder');
+        }else{
+          await saveBlob(blob, fname);
+        }
+        geo.dispose();
+      }finally{ trash.forEach(o=>{ try{o.delete()}catch(_){} }); }
+      await new Promise(r=>setTimeout(r, 350));           // spacing so the browser accepts every download
+    }
+    if(dir){ showSpinner(true, letters.length + ' files saved ✓'); setTimeout(()=>showSpinner(false), 1200); }
+    else showSpinner(false);
+  }catch(e){
+    showError('Bulk export failed: ' + (e.message||e));
+    showSpinner(false);
+  }finally{
+    btn.disabled = false;
+  }
+}
+document.getElementById('pdDlBulk').addEventListener('click', pdBulkExport);
+document.getElementById('pdRecenter').addEventListener('click', ()=>frameCamera(pendantGroup));
+
+/* ---------- mode tabs ---------- */
+function setMode(m){
+  state.mode = m;
+  document.body.dataset.mode = m;
+  document.getElementById('tabPencil').classList.toggle('active', m==='pencil');
+  document.getElementById('tabPendant').classList.toggle('active', m==='pendant');
+  wordGroup.visible = (m==='pencil');
+  pendantGroup.visible = (m==='pendant');
+  if(m==='pendant' && pendantDirty) pendantRebuild();
+  document.getElementById('badge').innerHTML = lastBadge[m];
+  if(m==='pendant' && !hasFramedPendant && pendantGroup.children.length){ frameCamera(pendantGroup); hasFramedPendant=true; }
+}
+document.getElementById('tabPencil').addEventListener('click', ()=>setMode('pencil'));
+document.getElementById('tabPendant').addEventListener('click', ()=>setMode('pendant'));
+
+/* ============================================================
+   Helpers: spinner / status / error
+   ============================================================ */
+function showSpinner(on, text){ const s=$('spinner'); if(text) $('spinText').textContent=text; s.classList.toggle('on', on); }
+
+/* ---------- saving files ----------
+   Plain <a download> is silently blocked when the app runs inside a sandboxed iframe
+   without allow-downloads (the published-artifact case). There, use the native
+   save dialog (File System Access API) instead; everywhere else keep plain downloads. */
+const IN_IFRAME = (()=>{ try{ return window.self !== window.top; }catch(e){ return true; } })();
+function diagDl(name, msg){ DIAG.dl = DIAG.dl || []; DIAG.dl.push(diagTs()+' '+name+': '+msg); if(DIAG.dl.length>14) DIAG.dl.shift(); }
+async function saveBlob(blob, filename){
+  let pickerErr = null;
+  if(IN_IFRAME && window.showSaveFilePicker){
+    try{
+      const h = await window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [{ description:'STL model', accept:{ 'model/stl':['.stl'] } }]
+      });
+      const w = await h.createWritable();
+      await w.write(blob); await w.close();
+      diagDl(filename, 'saved via file picker');
+      return true;
+    }catch(e){
+      if(e && e.name === 'AbortError'){ diagDl(filename, 'save cancelled by user'); return false; }
+      pickerErr = (e && (e.name + ': ' + e.message)) || 'unknown';
+      diagDl(filename, 'picker failed — ' + pickerErr);
+    }
+  }
+  try{
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 8000);
+    diagDl(filename, 'anchor download triggered' + (IN_IFRAME ? ' (sandbox may block it)' : ''));
+    if(IN_IFRAME){
+      showError('This embedded page can’t save files (platform sandbox blocks downloads). Open the local pencil-text-3d.html to download STLs.');
+    }
+    return true;
+  }catch(e){
+    diagDl(filename, 'anchor failed — ' + (e && e.message));
+    showError('Download failed: ' + ((e && e.message) || e));
+    return false;
+  }
+}
+function setFontStatus(t){ $('fontStatus').textContent = t; }
+let errTimer=null;
+function showError(msg){ const e=$('err'); e.textContent=msg; e.classList.add('on'); clearTimeout(errTimer); errTimer=setTimeout(()=>e.classList.remove('on'), 6000); }
+
+window.addEventListener('error', e=>{
+  if(/ResizeObserver loop/i.test(e.message||'')) return;   // benign browser notification, not a real error
+  showError('Error: ' + (e.message||'something went wrong'));
+});
+
+/* ============================================================
+   Boot
+   ============================================================ */
+async function boot(){
+  renderEditor();
+  loadFontList();  // async; upgrades the dropdown when ready
+  showSpinner(true, 'Loading 3D engine…');
+  try{ await initManifold(); }              // watertight boolean engine (WASM)
+  catch(e){ showError('3D engine failed to load — holes will be disabled.'); }
+  // default font: Chewy (chunky, rounded — great for pencil name beads)
+  const def = FALLBACK_FONTS.find(f=>f.id==='chewy');
+  fontSearch.value = def.family;
+  await loadFontFromUrl(expoUrl(def.id, def.family, def.weights), def.family);
+}
+/* ---------- diagnostics panel (🩺) ---------- */
+(function diagUI(){
+  const btn = document.createElement('button');
+  btn.textContent = '🩺';
+  btn.title = 'Diagnostics';
+  btn.style.cssText = 'position:fixed;right:12px;bottom:12px;z-index:99;width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:var(--panel);font-size:17px;box-shadow:0 4px 14px rgba(20,30,60,.15)';
+  document.body.appendChild(btn);
+
+  const panel = document.createElement('div');
+  panel.style.cssText = 'position:fixed;right:12px;bottom:56px;z-index:99;width:min(440px,92vw);max-height:62vh;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;color:var(--text);display:none;box-shadow:0 12px 40px rgba(20,30,60,.25)';
+  const copy = document.createElement('button');
+  copy.textContent = 'Copy report';
+  copy.style.cssText = 'display:block;margin:0 0 8px;padding:7px 12px;border-radius:8px;border:1px solid var(--line);background:var(--panel-2);color:var(--text);font:600 12px sans-serif';
+  const pre = document.createElement('div');
+  pre.style.cssText = 'white-space:pre-wrap;word-break:break-word;font:11px/1.55 Consolas,monospace';
+  panel.appendChild(copy); panel.appendChild(pre);
+  document.body.appendChild(panel);
+
+  function report(){
+    const cnv = renderer.domElement;
+    return [
+      'MANAPP DIAGNOSTICS  ' + new Date().toISOString(),
+      'ua: ' + navigator.userAgent,
+      'screen: ' + screen.width + 'x' + screen.height + ' @' + devicePixelRatio + '  canvas: ' + cnv.width + 'x' + cnv.height,
+      'gpu: ' + DIAG.gpu,
+      'webgl2: ' + DIAG.webgl2 + '  maxTex: ' + (DIAG.maxTex || '?') + '  lite: ' + liteMode,
+      'context losses: ' + DIAG.ctxLost,
+      'loop: frames ' + DIAG.frames + ', rendered ' + DIAG.rendered +
+        (DIAG.renderErr ? (', RENDER ERR ×' + DIAG.renderErrN + ': ' + DIAG.renderErr) : ''),
+      'wasm: ' + DIAG.wasm,
+      'font: ' + ((document.getElementById('fontStatus') || {}).textContent || '?'),
+      'badge: ' + ((document.getElementById('badge') || {}).textContent || '?').replace(/\s+/g, ' '),
+      '',
+      'iframe: ' + IN_IFRAME + '  savePicker: ' + !!window.showSaveFilePicker + '  dirPicker: ' + !!window.showDirectoryPicker,
+      'downloads:' + ((DIAG.dl && DIAG.dl.length) ? '\n  ' + DIAG.dl.join('\n  ') : ' (none attempted)'),
+      '',
+      'errors:' + (DIAG.errors.length ? '\n  ' + DIAG.errors.join('\n  ') : ' (none)'),
+      'console.error:' + (DIAG.cons.length ? '\n  ' + DIAG.cons.join('\n  ') : ' (none)')
+    ].join('\n');
+  }
+  copy.onclick = ()=>{
+    const txt = report();
+    const done = ok => { copy.textContent = ok ? 'Copied ✓' : 'Copy blocked — screenshot the panel'; setTimeout(()=>copy.textContent='Copy report', 3000); };
+    const fallback = ()=>{
+      try{ const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta);
+           ta.select(); const ok = document.execCommand('copy'); ta.remove(); done(ok); }
+      catch(e){ done(false); }
+    };
+    if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(()=>done(true), fallback);
+    else fallback();
+  };
+  let open = false, tick = null, autoOpened = false;
+  function setOpen(o){
+    open = o; panel.style.display = o ? 'block' : 'none';
+    clearInterval(tick);
+    if(o){ pre.textContent = report(); tick = setInterval(()=>{ pre.textContent = report(); }, 1500); }
+  }
+  btn.onclick = ()=>setOpen(!open);
+  setInterval(()=>{     // auto-open once when trouble accumulates
+    if(autoOpened || open) return;
+    if(DIAG.ctxLost > 0 || DIAG.renderErrN > 0 || DIAG.errors.length >= 3){ autoOpened = true; setOpen(true); }
+  }, 4000);
+})();
+
+boot();
+</script>
+</body>
+</html>
