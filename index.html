@@ -1181,7 +1181,7 @@ function pdBuiltinPolys(kind){
   else if(kind==='square'){
     const h=15, r=6;
     const cs=[[h-r,h-r,0],[-(h-r),h-r,Math.PI/2],[-(h-r),-(h-r),Math.PI],[h-r,-(h-r),3*Math.PI/2]];
-    for(const [ccx,ccy,a0] of cs) for(let i=0;i<=24;i++){ const a=a0-Math.PI/2+i/24*Math.PI/2; pts.push([ccx+Math.cos(a)*r, ccy+Math.sin(a)*r]); }
+    for(const [ccx,ccy,a0] of cs) for(let i=0;i<=24;i++){ const a=a0+i/24*Math.PI/2; pts.push([ccx+Math.cos(a)*r, ccy+Math.sin(a)*r]); }
   }
   else if(kind==='heart'){
     for(let i=0;i<240;i++){ const t=i/240*Math.PI*2;
