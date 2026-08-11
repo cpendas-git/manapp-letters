@@ -932,7 +932,7 @@ function pickFont(f){
   const url = expoUrl(f.id, f.family, f.weights||[400]);
   loadFontFromUrl(url, f.family, url);
 }
-fontSearch.addEventListener('focus', ()=>renderCombo(fontSearch.value));
+fontSearch.addEventListener('focus', ()=>{ fontSearch.select(); renderCombo(''); });   // open with the FULL catalogue; typing filters
 fontSearch.addEventListener('input', ()=>{ comboActive=-1; renderCombo(fontSearch.value); });
 fontSearch.addEventListener('keydown', (e)=>{
   if(e.key==='ArrowDown'){ comboActive=Math.min(comboActive+1, comboMatches.length-1); renderCombo(fontSearch.value); e.preventDefault(); }
