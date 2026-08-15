@@ -135,8 +135,12 @@
   .tabbar{display:flex;gap:6px;margin-top:14px}
   .tab{flex:1;padding:9px 8px;border-radius:9px;border:1px solid var(--line);background:var(--panel-2);color:var(--muted);font-size:12.5px;font-weight:700}
   .tab.active{background:linear-gradient(135deg,var(--accent),#ff9d3f);color:#241a00;border-color:transparent}
-  body[data-mode="pendant"] .only-pencil{display:none}
-  body[data-mode="pencil"] .only-pendant{display:none}
+  body[data-mode="pencil"]  .only-pendant, body[data-mode="pencil"]  .only-offset{display:none}
+  body[data-mode="pendant"] .only-pencil,  body[data-mode="pendant"] .only-offset{display:none}
+  body[data-mode="offset"]  .only-pencil,  body[data-mode="offset"]  .only-pendant{display:none}
+  body[data-mode="pendant"] .editor{display:none}   /* spacing editor: shown in pencil + offset */
+  .legend{display:flex;gap:14px;align-items:center;margin-top:8px;font-size:12px;color:var(--muted)}
+  .legend i{width:12px;height:12px;border-radius:3px;display:inline-block;margin-right:5px;vertical-align:-1px}
   .shape-row{display:flex;gap:6px;flex-wrap:wrap}
   .shape-btn{flex:1;min-width:58px;padding:8px 4px;border-radius:9px;border:1px solid var(--line);background:var(--panel-2);color:var(--text);font-size:12px}
   .shape-btn.active{border-color:var(--accent);background:rgba(245,158,11,.14)}
@@ -159,8 +163,9 @@
     </div>
 
     <div class="tabbar">
-      <button class="tab active" id="tabPencil">✏️ Pencil words</button>
-      <button class="tab" id="tabPendant">🔘 Pendant key</button>
+      <button class="tab active" id="tabPencil">✏️ Pencil</button>
+      <button class="tab" id="tabPendant">🔘 Pendant</button>
+      <button class="tab" id="tabOffset">🔤 Offset</button>
     </div>
 
     <div class="group only-pencil">
@@ -336,6 +341,76 @@
       <button class="btn ghost" id="pdDlBulk">⬇ Download Bulk Set</button>
       <div class="hint">One key STL per entry — e.g. a,b,c,d,e,f downloads 6 key caps, all with the current shape and settings. Your browser will ask permission for multiple downloads.</div>
     </div>
+
+    <!-- ============ OFFSET TEXT MODE ============ -->
+    <div class="group only-offset">
+      <label class="title">Text</label>
+      <div class="field">
+        <input type="text" id="ofText" value="Name" maxlength="24" autocomplete="off" spellcheck="false" />
+        <div class="hint">Raised letters on a base plate shaped like an outward offset of the text. Drag the bars below to space letters.</div>
+      </div>
+    </div>
+
+    <div class="group only-offset">
+      <label class="title">Dimensions (mm)</label>
+      <div class="field"><label>Letter size <b><span id="ofSizeV">24</span> mm</b></label>
+        <input type="range" id="ofSize" min="10" max="60" value="24" step="1" /></div>
+      <div class="row2">
+        <div class="field"><label>Text height <b><span id="ofTextHV">5</span></b></label>
+          <input type="range" id="ofTextH" min="0.6" max="20" value="5" step="0.2" /></div>
+        <div class="field"><label>Base height <b><span id="ofBaseHV">3</span></b></label>
+          <input type="range" id="ofBaseH" min="0.6" max="16" value="3" step="0.2" /></div>
+      </div>
+      <div class="field"><label>Offset (base grows out) <b><span id="ofOffV">3</span> mm</b></label>
+        <input type="range" id="ofOff" min="0.4" max="14" value="3" step="0.2" /></div>
+      <div class="field"><label>Global letter spacing <b><span id="ofSpaceV">0</span> mm</b></label>
+        <input type="range" id="ofSpace" min="-8" max="20" value="0" step="0.5" /></div>
+    </div>
+
+    <div class="group only-offset">
+      <label class="title">Colors</label>
+      <div class="field">
+        <label>Letters</label>
+        <div class="colorrow" id="ofTextColors"></div>
+      </div>
+      <div class="field">
+        <label>Base (offset)</label>
+        <div class="colorrow" id="ofBaseColors"></div>
+      </div>
+    </div>
+
+    <div class="group only-offset">
+      <label class="title">Hanging ring</label>
+      <div class="field"><label>Sides</label>
+        <div class="shape-row" id="ofRingSides">
+          <button class="shape-btn" data-side="top">Top</button>
+          <button class="shape-btn" data-side="bottom">Bottom</button>
+          <button class="shape-btn" data-side="left">Left</button>
+          <button class="shape-btn" data-side="right">Right</button>
+        </div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Hole Ø <b><span id="ofRingHoleV">5</span></b></label>
+          <input type="range" id="ofRingHole" min="2" max="12" value="5" step="0.5" /></div>
+        <div class="field"><label>Ring width <b><span id="ofRingBandV">2.2</span></b></label>
+          <input type="range" id="ofRingBand" min="1.2" max="5" value="2.2" step="0.1" /></div>
+      </div>
+      <div class="field"><label>Ring thickness <b><span id="ofRingThV">3</span> mm</b></label>
+        <input type="range" id="ofRingTh" min="1.2" max="10" value="3" step="0.2" /></div>
+      <div class="hint">Toggle any of the four sides. Rings print flat with the base — no supports.</div>
+    </div>
+
+    <div class="group only-offset">
+      <label class="title">Export</label>
+      <div class="legend"><span><i id="ofLegT"></i>Letters</span><span><i id="ofLegB"></i>Base</span></div>
+      <button class="btn" id="ofDlCombined" style="margin-top:8px">⬇ Combined STL</button>
+      <div class="btn-row">
+        <button class="btn ghost" id="ofDlText">⬇ Letters</button>
+        <button class="btn ghost" id="ofDlBase">⬇ Base</button>
+      </div>
+      <button class="btn ghost" id="ofRecenter" style="margin-top:8px">Recenter view</button>
+      <div class="hint">Combined = one solid; do a filament change at the base height for two colors. Letters/Base = separate parts for multi-material.</div>
+    </div>
   </aside>
 
   <!-- ================= MAIN ================= -->
@@ -346,7 +421,7 @@
       <div class="errtoast" id="err"></div>
     </div>
 
-    <div class="editor only-pencil">
+    <div class="editor">
       <div class="editor-head">
         <span class="t">Letter spacing editor</span>
         <span class="r">Drag the bars between letters ↔</span>
@@ -875,6 +950,7 @@ async function loadFontFromUrl(url, label, previewUrl){
     renderEditor();
     rebuild();
     pendantFontRefresh();
+    offsetFontRefresh();
   }catch(e){
     setFontStatus('Could not load ' + label + '. Try another or upload a .ttf.');
     showError('Font failed to load: ' + label + '. This family may not be on the CDN — try uploading its .ttf file.');
@@ -895,6 +971,7 @@ function loadFontFromFile(file){
       renderEditor();
       rebuild();
       pendantFontRefresh();
+    offsetFontRefresh();
     }catch(e){
       showError('That file is not a valid TTF/OTF font.');
       setFontStatus('Upload failed — invalid font file.');
@@ -958,16 +1035,25 @@ async function loadFontList(){
 const strip = document.getElementById('strip');
 let selected = -1;
 
+// The one spacing editor drives whichever mode is active (pencil or offset).
+function curEd(){
+  return state.mode==='offset'
+    ? { text: off.text, gaps: off.gaps, size: off.size, parity:false, schedule: offSchedule }
+    : { text: state.text, gaps: state.gaps, size: state.size, parity:true, schedule: scheduleRebuild };
+}
+
 function ensureGaps(){
-  const need = Math.max(0, state.text.length - 1);
-  if(state.gaps.length > need) state.gaps.length = need;
-  while(state.gaps.length < need) state.gaps.push(0);
+  const ed = curEd();
+  const need = Math.max(0, ed.text.length - 1);
+  if(ed.gaps.length > need) ed.gaps.length = need;
+  while(ed.gaps.length < need) ed.gaps.push(0);
 }
 
 function renderEditor(){
+  const ed = curEd();
   ensureGaps();
   strip.innerHTML = '';
-  const text = state.text;
+  const text = ed.text;
   if(!text.length){ strip.innerHTML = '<div class="empty-strip">Type something above ↑</div>'; return; }
 
   let vis = 0;
@@ -981,7 +1067,7 @@ function renderEditor(){
     c.style.fontFamily = "'preview-font', sans-serif";
     c.textContent = ch===' ' ? ' ' : ch;
     if(ch !== ' '){
-      c.classList.add(vis%2===0 ? 'odd' : 'even');
+      if(ed.parity) c.classList.add(vis%2===0 ? 'odd' : 'even');   // odd/even tint is pencil-only
       vis++;
     }
     c.onclick = ()=>{ selected = i; renderEditor(); };
@@ -997,7 +1083,7 @@ function renderEditor(){
     if(i < text.length-1){
       const h = document.createElement('div');
       h.className = 'handle';
-      h.style.minWidth = (14 + Math.max(0,state.gaps[i])*2) + 'px';
+      h.style.minWidth = (14 + Math.max(0,ed.gaps[i])*2) + 'px';
       const bar = document.createElement('div'); bar.className='bar'; h.appendChild(bar);
       const val = document.createElement('div'); val.className='val'; h.appendChild(val);
       attachHandleDrag(h, val, i);
@@ -1010,9 +1096,10 @@ function attachHandleDrag(h, val, idx){
   const PXPMM = 2.2;
   let startX=0, startGap=0, dragging=false;
   const down = (e)=>{
+    const ed = curEd();
     dragging=true; h.classList.add('drag');
     startX = (e.touches?e.touches[0].clientX:e.clientX);
-    startGap = state.gaps[idx]||0;
+    startGap = ed.gaps[idx]||0;
     val.textContent = startGap.toFixed(1)+' mm';
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
@@ -1020,19 +1107,19 @@ function attachHandleDrag(h, val, idx){
   };
   const move = (e)=>{
     if(!dragging) return;
-    const x = e.clientX;
-    let ng = startGap + (x-startX)/PXPMM;
-    ng = Math.max(-state.size*0.8, Math.min(state.size*2.5, ng));
-    state.gaps[idx] = Math.round(ng*10)/10;
-    h.style.minWidth = (14 + Math.max(0,state.gaps[idx])*2) + 'px';
-    val.textContent = state.gaps[idx].toFixed(1)+' mm';
-    scheduleRebuild(30);
+    const ed = curEd();
+    let ng = startGap + (e.clientX-startX)/PXPMM;
+    ng = Math.max(-ed.size*0.8, Math.min(ed.size*2.5, ng));
+    ed.gaps[idx] = Math.round(ng*10)/10;
+    h.style.minWidth = (14 + Math.max(0,ed.gaps[idx])*2) + 'px';
+    val.textContent = ed.gaps[idx].toFixed(1)+' mm';
+    ed.schedule(30);
   };
   const up = ()=>{
     dragging=false; h.classList.remove('drag');
     window.removeEventListener('pointermove', move);
     window.removeEventListener('pointerup', up);
-    scheduleRebuild(0);
+    curEd().schedule(0);
   };
   h.addEventListener('pointerdown', down);
 }
@@ -1153,7 +1240,7 @@ const pd = {
   show:{ base:true, cap:true, switch:true }, explode:0,
 };
 state.mode = 'pencil';
-const lastBadge = { pencil:'—', pendant:'—' };
+const lastBadge = { pencil:'—', pendant:'—', offset:'—' };
 
 const pendantGroup = new THREE.Group();
 pendantGroup.rotation.x = -Math.PI/2;    // authored Z-up, viewed Y-up (same as the word)
@@ -1523,19 +1610,176 @@ document.getElementById('pdDlBulk').addEventListener('click', pdBulkExport);
 document.getElementById('pdRecenter').addEventListener('click', ()=>frameCamera(pendantGroup));
 
 /* ---------- mode tabs ---------- */
+/* ============================================================
+   OFFSET TEXT MODE — raised letters on an outward-offset base plate,
+   in two colors, with an optional ring on any of the four sides.
+   ============================================================ */
+const off = {
+  text:'Name', size:24, textH:5, baseH:3, offset:3, spacing:0, gaps:[],
+  textColor:0xffcf3f, offColor:0x6ea8ff,
+  ringHole:5, ringBand:2.2, ringTh:3, sides:{top:true,bottom:false,left:false,right:false},
+};
+const offsetGroup = new THREE.Group();
+offsetGroup.rotation.x = -Math.PI/2;   // authored Z-up, viewed Y-up (same convention as the others)
+offsetGroup.visible = false;
+scene.add(offsetGroup);
+const offTextMat = new THREE.MeshStandardMaterial({color:off.textColor, metalness:0.12, roughness:0.55});
+const offBaseMat = new THREE.MeshStandardMaterial({color:off.offColor,  metalness:0.1,  roughness:0.6});
+let offTextGeo=null, offBaseGeo=null, offTextMesh=null, offBaseMesh=null, offSolids=null;
+let offsetTimer=null, offsetDirty=true, hasFramedOffset=false;
+function offSchedule(delay=120){ clearTimeout(offsetTimer); offsetTimer=setTimeout(offsetRebuild, delay); }
+function offsetFontRefresh(){ if(state.mode==='offset') offSchedule(0); else offsetDirty=true; }
+
+// text → centered polygons at off.size, honoring per-letter gaps + global spacing
+function offTextPolys(){
+  if(!currentFont) return null;
+  const upm = currentFont.unitsPerEm || 1000, size = off.size, scale = size/upm;
+  let cursorX = 0; const polys=[]; const text = off.text;
+  for(let i=0;i<text.length;i++){
+    const ch = text[i];
+    const glyph = currentFont.charToGlyph(ch);
+    const advance = (glyph.advanceWidth || upm*0.4) * scale;
+    if(ch !== ' '){
+      for(const sh of glyphToShapes(glyph.getPath(0,0,size))){
+        const p = sh.extractPoints(16);
+        polys.push(p.shape.map(v=>[v.x+cursorX, v.y]));
+        for(const hole of p.holes) polys.push(hole.map(v=>[v.x+cursorX, v.y]));
+      }
+    }
+    cursorX += advance + off.spacing + (off.gaps[i]||0);
+  }
+  if(!polys.length) return null;
+  let minX=1e9,maxX=-1e9,minY=1e9,maxY=-1e9;
+  for(const c of polys) for(const [x,y] of c){ if(x<minX)minX=x; if(x>maxX)maxX=x; if(y<minY)minY=y; if(y>maxY)maxY=y; }
+  const cx=(minX+maxX)/2, cy=(minY+maxY)/2;
+  return { polys: polys.map(c=>c.map(([x,y])=>[x-cx, y-cy])), w:maxX-minX, h:maxY-minY };
+}
+
+function offsetRebuild(){
+  if(!Manifold || !CrossSection) return;
+  offsetDirty = false;
+  const trash=[]; const T=o=>(trash.push(o),o);
+  try{
+    for(const m of [...offsetGroup.children]) offsetGroup.remove(m);
+    for(const g of [offTextGeo, offBaseGeo]) if(g) g.dispose();
+    offTextGeo=offBaseGeo=null; offTextMesh=offBaseMesh=null;
+    if(offSolids){ for(const s of Object.values(offSolids)){ try{s.delete()}catch(_){} } offSolids=null; }
+
+    const tp = offTextPolys();
+    if(!tp){ lastBadge.offset='Type something ↑'; if(state.mode==='offset') document.getElementById('badge').innerHTML=lastBadge.offset; return; }
+
+    const textCS = T(new CrossSection(tp.polys, 'EvenOdd'));
+    const offCS  = T(textCS.offset(off.offset, 'Round', 2, 48));   // base silhouette = outward offset of the text
+    const bb = offCS.bounds();
+
+    // base plate (0..baseH) + rings on the chosen sides
+    let base = T(offCS.extrude(off.baseH));
+    const oR = off.ringHole/2 + off.ringBand, over = off.ringBand + 0.6;
+    const bcx=(bb.min[0]+bb.max[0])/2, bcy=(bb.min[1]+bb.max[1])/2;
+    const ringPos = { top:[bcx, bb.max[1]+oR-over], bottom:[bcx, bb.min[1]-oR+over],
+                      right:[bb.max[0]+oR-over, bcy], left:[bb.min[0]-oR+over, bcy] };
+    let ringsN=0;
+    for(const side of ['top','bottom','left','right']){
+      if(!off.sides[side]) continue;
+      ringsN++;
+      const loop = T(T(CrossSection.circle(oR,64)).subtract(T(CrossSection.circle(off.ringHole/2,64))));
+      base = T(Manifold.union(base, T(T(loop.extrude(off.ringTh)).translate([ringPos[side][0], ringPos[side][1], 0]))));
+    }
+    // raised letters, sitting on top of the base plate
+    const textSolid = T(T(textCS.extrude(off.textH)).translate([0,0,off.baseH]));
+
+    offBaseGeo = manifoldToGeometry(base.getMesh());
+    offTextGeo = manifoldToGeometry(textSolid.getMesh());
+    offBaseMesh = new THREE.Mesh(offBaseGeo, offBaseMat); offBaseMesh.castShadow=offBaseMesh.receiveShadow=true;
+    offTextMesh = new THREE.Mesh(offTextGeo, offTextMat); offTextMesh.castShadow=offTextMesh.receiveShadow=true;
+    offsetGroup.add(offBaseMesh, offTextMesh);
+
+    offSolids = { base, text:textSolid };   // keep alive for export; pull them out of the trash
+    for(const s of Object.values(offSolids)){ const i=trash.indexOf(s); if(i>=0) trash.splice(i,1); }
+
+    const w=bb.max[0]-bb.min[0], h=bb.max[1]-bb.min[1];
+    lastBadge.offset = `Base <b>${w.toFixed(0)}×${h.toFixed(0)}×${off.baseH}</b> · letters +<b>${off.textH}</b> mm`+(ringsN?` · ${ringsN} ring${ringsN>1?'s':''}`:'');
+    if(state.mode==='offset') document.getElementById('badge').innerHTML = lastBadge.offset;
+    if(state.mode==='offset' && !hasFramedOffset){ frameCamera(offsetGroup); hasFramedOffset=true; }
+  }catch(e){
+    showError('Offset build failed: ' + (e.message||e));
+  }finally{
+    trash.forEach(o=>{ try{o.delete()}catch(_){} });
+  }
+}
+
+function offExport(which){
+  if(!offSolids){ showError('Nothing built yet — open the Offset tab first.'); return; }
+  const trash=[]; const T=o=>(trash.push(o),o);
+  try{
+    let solid;
+    if(which==='combined') solid = T(Manifold.union(offSolids.base, offSolids.text));
+    else if(which==='base') solid = offSolids.base;
+    else solid = T(offSolids.text.translate([0,0,-off.baseH]));   // letters dropped to the bed
+    const geo = manifoldToGeometry(solid.getMesh());
+    const sc = new THREE.Scene(); sc.add(new THREE.Mesh(geo));
+    const data = new STLExporter().parse(sc, {binary:true});
+    const nm = (off.text.replace(/[^a-z0-9]/gi,'_')||'text');
+    saveBlob(new Blob([data],{type:'application/octet-stream'}), nm+'_'+which+'.stl');
+    geo.dispose();
+  }catch(e){ showError('Export failed: '+(e.message||e)); }
+  finally{ trash.forEach(o=>{ try{o.delete()}catch(_){} }); }
+}
+
+/* ---------- offset UI ---------- */
+function offBind(id,key,valId){
+  const el=$(id), out=$(valId);
+  el.addEventListener('input', ()=>{ off[key]=parseFloat(el.value); if(out) out.textContent=el.value; offSchedule(); });
+}
+offBind('ofSize','size','ofSizeV');  offBind('ofTextH','textH','ofTextHV');  offBind('ofBaseH','baseH','ofBaseHV');
+offBind('ofOff','offset','ofOffV');  offBind('ofSpace','spacing','ofSpaceV');
+offBind('ofRingHole','ringHole','ofRingHoleV'); offBind('ofRingBand','ringBand','ofRingBandV'); offBind('ofRingTh','ringTh','ofRingThV');
+$('ofText').addEventListener('input', e=>{ off.text=e.target.value; selected=-1; renderEditor(); offSchedule(50); });
+document.querySelectorAll('#ofRingSides .shape-btn').forEach(b=>{
+  if(off.sides[b.dataset.side]) b.classList.add('active');
+  b.addEventListener('click', ()=>{ const s=b.dataset.side; off.sides[s]=!off.sides[s]; b.classList.toggle('active', off.sides[s]); offSchedule(0); });
+});
+function updateOffLegend(){
+  $('ofLegT').style.background = '#'+off.textColor.toString(16).padStart(6,'0');
+  $('ofLegB').style.background = '#'+off.offColor.toString(16).padStart(6,'0');
+}
+function ofSwatches(containerId, getCur, setCur){
+  const el = $(containerId);
+  COLORS.forEach(c=>{
+    const d=document.createElement('div');
+    d.className='color'+(c===getCur()?' sel':'');
+    d.style.background='#'+c.toString(16).padStart(6,'0');
+    d.onclick=()=>{ setCur(c); el.querySelectorAll('.color').forEach(x=>x.classList.remove('sel')); d.classList.add('sel'); updateOffLegend(); };
+    el.appendChild(d);
+  });
+}
+ofSwatches('ofTextColors', ()=>off.textColor, c=>{ off.textColor=c; offTextMat.color.setHex(c); });
+ofSwatches('ofBaseColors', ()=>off.offColor,  c=>{ off.offColor=c;  offBaseMat.color.setHex(c); });
+updateOffLegend();
+$('ofDlCombined').addEventListener('click', ()=>offExport('combined'));
+$('ofDlText').addEventListener('click', ()=>offExport('text'));
+$('ofDlBase').addEventListener('click', ()=>offExport('base'));
+$('ofRecenter').addEventListener('click', ()=>frameCamera(offsetGroup));
+
 function setMode(m){
   state.mode = m;
   document.body.dataset.mode = m;
   document.getElementById('tabPencil').classList.toggle('active', m==='pencil');
   document.getElementById('tabPendant').classList.toggle('active', m==='pendant');
+  document.getElementById('tabOffset').classList.toggle('active', m==='offset');
   wordGroup.visible = (m==='pencil');
   pendantGroup.visible = (m==='pendant');
+  offsetGroup.visible = (m==='offset');
   if(m==='pendant' && pendantDirty) pendantRebuild();
+  if(m==='offset'  && offsetDirty)  offsetRebuild();
+  if(m!=='pendant') renderEditor();   // point the spacing strip at the active mode's text
   document.getElementById('badge').innerHTML = lastBadge[m];
   if(m==='pendant' && !hasFramedPendant && pendantGroup.children.length){ frameCamera(pendantGroup); hasFramedPendant=true; }
+  if(m==='offset'  && !hasFramedOffset  && offsetGroup.children.length){ frameCamera(offsetGroup);  hasFramedOffset=true; }
 }
 document.getElementById('tabPencil').addEventListener('click', ()=>setMode('pencil'));
 document.getElementById('tabPendant').addEventListener('click', ()=>setMode('pendant'));
+document.getElementById('tabOffset').addEventListener('click', ()=>setMode('offset'));
 
 /* ============================================================
    Helpers: spinner / status / error
