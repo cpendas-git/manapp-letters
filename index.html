@@ -94,6 +94,13 @@
     border:1px solid var(--line); box-shadow:0 4px 14px rgba(20,30,60,.08);
     padding:7px 11px; border-radius:20px; font-size:12px; color:var(--muted); pointer-events:none}
   .badge b{color:var(--text)}
+  .viewbtn{position:absolute; top:14px; right:14px; z-index:6; background:rgba(255,255,255,.82); backdrop-filter:blur(6px);
+    border:1px solid var(--line); box-shadow:0 4px 14px rgba(20,30,60,.08); padding:7px 11px; border-radius:20px;
+    font-size:12px; font-weight:600; color:var(--muted); cursor:pointer}
+  .viewbtn.on{color:var(--accent-2); border-color:var(--accent-2)}
+  .dimlabel{position:absolute; z-index:6; transform:translate(-50%,-50%); pointer-events:none; white-space:nowrap;
+    background:var(--accent-2); color:#fff; font-size:11px; font-weight:700; padding:2px 7px; border-radius:6px;
+    font-variant-numeric:tabular-nums; box-shadow:0 2px 8px rgba(20,30,60,.25); display:none}
   .spinner{position:absolute; inset:0; display:none; place-items:center; background:rgba(238,240,244,.66); z-index:5; flex-direction:column; gap:12px}
   .spinner.on{display:grid}
   .spinner .ring{width:34px;height:34px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--accent);animation:spin .8s linear infinite}
@@ -397,7 +404,9 @@
       </div>
       <div class="field"><label>Ring thickness <b><span id="ofRingThV">3</span> mm</b></label>
         <input type="range" id="ofRingTh" min="1.2" max="10" value="3" step="0.2" /></div>
-      <div class="hint">Toggle any of the four sides. Rings print flat with the base — no supports.</div>
+      <div class="field"><label>Ring distance <b><span id="ofRingGapV">0</span> mm</b></label>
+        <input type="range" id="ofRingGap" min="-5" max="5" value="0" step="0.1" /></div>
+      <div class="hint">Toggle any of the four sides. Distance moves the ring further out (+) or deeper into the base (−). Rings print flat — no supports.</div>
     </div>
 
     <div class="group only-offset">
@@ -417,6 +426,9 @@
   <main class="main">
     <div id="view">
       <div class="badge" id="badge">—</div>
+      <button class="viewbtn on" id="dimToggle">📐 Dimensions</button>
+      <div class="dimlabel" id="dimX"></div>
+      <div class="dimlabel" id="dimY"></div>
       <div class="spinner" id="spinner"><div class="ring"></div><span id="spinText">Loading…</span></div>
       <div class="errtoast" id="err"></div>
     </div>
@@ -649,6 +661,48 @@ const wordGroup = new THREE.Group();   // exported meshes live here
 scene.add(wordGroup);
 let pencilGuide = null;
 
+/* ---------- bounding box with live X/Y (mm) labels (works in every mode) ---------- */
+const bboxBox = new THREE.LineSegments(
+  new THREE.EdgesGeometry(new THREE.BoxGeometry(1,1,1)),
+  new THREE.LineBasicMaterial({ color:0x3b82f6, transparent:true, opacity:0.6 }));
+bboxBox.visible = false;
+scene.add(bboxBox);
+let bboxOn = true, bboxCur = null;
+
+// Recompute box from the *printable* meshes of the active mode (exclude the preview switch).
+function updateBBox(){
+  if(!bboxOn){ bboxBox.visible = false; bboxCur = null; return; }
+  scene.updateMatrixWorld(true);
+  const box = new THREE.Box3(); let any = false;
+  const add = m => { if(m){ box.expandByObject(m); any = true; } };
+  if(state.mode==='pencil') wordGroup.children.forEach(m=>{ if(m!==pencilGuide) add(m); });   // exclude the preview rod
+  else if(state.mode==='pendant'){ add(pdBaseMesh); add(pdCapMesh); }
+  else if(state.mode==='offset'){ add(offBaseMesh); add(offTextMesh); }
+  if(!any || box.isEmpty()){ bboxBox.visible = false; bboxCur = null; return; }
+  const c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3());
+  bboxBox.position.copy(c);
+  bboxBox.scale.set(Math.max(s.x,0.01), Math.max(s.y,0.01), Math.max(s.z,0.01));
+  bboxBox.visible = true;
+  bboxCur = { box, c, s };   // s.x = export X (width), s.z = export Y (depth), s.y = height
+}
+// Project the two footprint edges to screen each frame and place the HTML labels.
+function updateBBoxLabels(){
+  const lx = document.getElementById('dimX'), ly = document.getElementById('dimY');
+  if(!lx || !ly) return;
+  if(!bboxOn || !bboxCur){ lx.style.display='none'; ly.style.display='none'; return; }
+  const { box, c, s } = bboxCur;
+  const place = (el, world, txt) => {
+    const p = world.clone().project(camera);
+    if(p.z >= 1){ el.style.display='none'; return; }   // behind camera
+    el.textContent = txt;
+    el.style.display = 'block';
+    el.style.left = (( p.x*0.5+0.5) * view.clientWidth ) + 'px';
+    el.style.top  = ((-p.y*0.5+0.5) * view.clientHeight) + 'px';
+  };
+  place(lx, new THREE.Vector3(c.x, box.min.y, box.max.z), 'X ' + s.x.toFixed(1) + ' mm');
+  place(ly, new THREE.Vector3(box.max.x, box.min.y, c.z), 'Y ' + s.z.toFixed(1) + ' mm');
+}
+
 let material = new THREE.MeshStandardMaterial({color:state.color, metalness:0.15, roughness:0.55});
 
 function resize(){
@@ -670,6 +724,7 @@ let frameFlip = false;
   controls.update();
   try{
     renderer.render(scene, camera);
+    updateBBoxLabels();
     DIAG.rendered++;
   }catch(e){
     DIAG.renderErr = String(e && (e.message||e));
@@ -894,6 +949,7 @@ function rebuild(){
 
   updateBadge(letters.length, wordW, yMax-yMin, minDepth);
   if(!hasFramed){ frameCamera(); hasFramed = true; }   // frame once; keep the user's view afterwards
+  updateBBox();
 }
 
 function frameCamera(group = wordGroup){
@@ -1432,6 +1488,7 @@ function pendantRebuild(){
     lastBadge.pendant = `Base <b>${baseW.toFixed(0)}×${baseH.toFixed(0)}×${(cavityZ+pd.wallH).toFixed(0)}</b> · Key <b>${shapeW.toFixed(0)}×${shapeH.toFixed(0)}×${(pd.capTh+(txt?pd.letterH:0)).toFixed(1)}</b> mm · gap <b>${pd.gap}</b>${warn}`;
     if(state.mode==='pendant') document.getElementById('badge').innerHTML = lastBadge.pendant;
     if(!hasFramedPendant && state.mode==='pendant'){ frameCamera(pendantGroup); hasFramedPendant=true; }
+    if(state.mode==='pendant') updateBBox();
   }catch(e){
     showError('Pendant build failed: ' + (e.message||e));
   }finally{
@@ -1617,7 +1674,7 @@ document.getElementById('pdRecenter').addEventListener('click', ()=>frameCamera(
 const off = {
   text:'Name', size:24, textH:5, baseH:3, offset:3, spacing:0, gaps:[],
   textColor:0xffcf3f, offColor:0x6ea8ff,
-  ringHole:5, ringBand:2.2, ringTh:3, sides:{top:true,bottom:false,left:false,right:false},
+  ringHole:5, ringBand:2.2, ringTh:3, ringGap:0, sides:{top:true,bottom:false,left:false,right:false},
 };
 const offsetGroup = new THREE.Group();
 offsetGroup.rotation.x = -Math.PI/2;   // authored Z-up, viewed Y-up (same convention as the others)
@@ -1674,10 +1731,11 @@ function offsetRebuild(){
 
     // base plate (0..baseH) + rings on the chosen sides
     let base = T(offCS.extrude(off.baseH));
-    const oR = off.ringHole/2 + off.ringBand, over = off.ringBand + 0.6;
+    const oR = off.ringHole/2 + off.ringBand, over = off.ringBand + 0.6, g = off.ringGap;
     const bcx=(bb.min[0]+bb.max[0])/2, bcy=(bb.min[1]+bb.max[1])/2;
-    const ringPos = { top:[bcx, bb.max[1]+oR-over], bottom:[bcx, bb.min[1]-oR+over],
-                      right:[bb.max[0]+oR-over, bcy], left:[bb.min[0]-oR+over, bcy] };
+    // g moves the ring outward (+) or into the plate (−), same "further/closer" on every side
+    const ringPos = { top:[bcx, bb.max[1]+oR-over+g], bottom:[bcx, bb.min[1]-oR+over-g],
+                      right:[bb.max[0]+oR-over+g, bcy], left:[bb.min[0]-oR+over-g, bcy] };
     let ringsN=0;
     for(const side of ['top','bottom','left','right']){
       if(!off.sides[side]) continue;
@@ -1701,6 +1759,7 @@ function offsetRebuild(){
     lastBadge.offset = `Base <b>${w.toFixed(0)}×${h.toFixed(0)}×${off.baseH}</b> · letters +<b>${off.textH}</b> mm`+(ringsN?` · ${ringsN} ring${ringsN>1?'s':''}`:'');
     if(state.mode==='offset') document.getElementById('badge').innerHTML = lastBadge.offset;
     if(state.mode==='offset' && !hasFramedOffset){ frameCamera(offsetGroup); hasFramedOffset=true; }
+    if(state.mode==='offset') updateBBox();
   }catch(e){
     showError('Offset build failed: ' + (e.message||e));
   }finally{
@@ -1733,7 +1792,8 @@ function offBind(id,key,valId){
 }
 offBind('ofSize','size','ofSizeV');  offBind('ofTextH','textH','ofTextHV');  offBind('ofBaseH','baseH','ofBaseHV');
 offBind('ofOff','offset','ofOffV');  offBind('ofSpace','spacing','ofSpaceV');
-offBind('ofRingHole','ringHole','ofRingHoleV'); offBind('ofRingBand','ringBand','ofRingBandV'); offBind('ofRingTh','ringTh','ofRingThV');
+offBind('ofRingHole','ringHole','ofRingHoleV'); offBind('ofRingBand','ringBand','ofRingBandV');
+offBind('ofRingTh','ringTh','ofRingThV'); offBind('ofRingGap','ringGap','ofRingGapV');
 $('ofText').addEventListener('input', e=>{ off.text=e.target.value; selected=-1; renderEditor(); offSchedule(50); });
 document.querySelectorAll('#ofRingSides .shape-btn').forEach(b=>{
   if(off.sides[b.dataset.side]) b.classList.add('active');
@@ -1776,7 +1836,13 @@ function setMode(m){
   document.getElementById('badge').innerHTML = lastBadge[m];
   if(m==='pendant' && !hasFramedPendant && pendantGroup.children.length){ frameCamera(pendantGroup); hasFramedPendant=true; }
   if(m==='offset'  && !hasFramedOffset  && offsetGroup.children.length){ frameCamera(offsetGroup);  hasFramedOffset=true; }
+  updateBBox();
 }
+document.getElementById('dimToggle').addEventListener('click', ()=>{
+  bboxOn = !bboxOn;
+  document.getElementById('dimToggle').classList.toggle('on', bboxOn);
+  updateBBox();
+});
 document.getElementById('tabPencil').addEventListener('click', ()=>setMode('pencil'));
 document.getElementById('tabPendant').addEventListener('click', ()=>setMode('pendant'));
 document.getElementById('tabOffset').addEventListener('click', ()=>setMode('offset'));
