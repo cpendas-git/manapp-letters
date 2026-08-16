@@ -370,6 +370,10 @@
       </div>
       <div class="field"><label>Offset (base grows out) <b><span id="ofOffV">3</span> mm</b></label>
         <input type="range" id="ofOff" min="0.4" max="14" value="3" step="0.2" /></div>
+      <div class="field">
+        <button class="shape-btn active" id="ofFiller" style="width:100%">🧩 Filler — fill base holes</button>
+        <div class="hint">On: the base is the solid outer contour of the offset (a letter counter like “O” won't punch a hole through the plate). Off: the base keeps interior holes.</div>
+      </div>
       <div class="field"><label>Global letter spacing <b><span id="ofSpaceV">0</span> mm</b></label>
         <input type="range" id="ofSpace" min="-8" max="20" value="0" step="0.5" /></div>
     </div>
@@ -1641,7 +1645,7 @@ document.getElementById('pdRecenter').addEventListener('click', ()=>frameCamera(
    in two colors, with an optional ring on any of the four sides.
    ============================================================ */
 const off = {
-  text:'Name', size:24, textH:5, baseH:3, offset:3, spacing:0, gaps:[],
+  text:'Name', size:24, textH:5, baseH:3, offset:3, spacing:0, gaps:[], filler:true,
   textColor:0xffcf3f, offColor:0x6ea8ff,
   ringHole:5, ringBand:2.2, ringTh:3, ringGap:0, sides:{top:true,bottom:false,left:false,right:false},
 };
@@ -1695,7 +1699,13 @@ function offsetRebuild(){
     if(!tp){ lastBadge.offset='Type something ↑'; if(state.mode==='offset') document.getElementById('badge').innerHTML=lastBadge.offset; return; }
 
     const textCS = T(new CrossSection(tp.polys, 'EvenOdd'));
-    const offCS  = T(textCS.offset(off.offset, 'Round', 2, 48));   // base silhouette = outward offset of the text
+    let offCS = T(textCS.offset(off.offset, 'Round', 2, 48));      // base silhouette = outward offset of the text
+    if(off.filler){                                                // fill interior holes: keep only outer contours
+      const polys = offCS.toPolygons();
+      const sArea = p => { let a=0; for(let i=0;i<p.length;i++){ const [x1,y1]=p[i],[x2,y2]=p[(i+1)%p.length]; a+=x1*y2-x2*y1; } return a/2; };
+      const outers = polys.filter(p=>sArea(p) > 0);
+      if(outers.length) offCS = T(new CrossSection(outers, 'Positive'));
+    }
     const bb = offCS.bounds();
 
     // base plate (0..baseH) + rings on the chosen sides
@@ -1764,6 +1774,7 @@ offBind('ofOff','offset','ofOffV');  offBind('ofSpace','spacing','ofSpaceV');
 offBind('ofRingHole','ringHole','ofRingHoleV'); offBind('ofRingBand','ringBand','ofRingBandV');
 offBind('ofRingTh','ringTh','ofRingThV'); offBind('ofRingGap','ringGap','ofRingGapV');
 $('ofText').addEventListener('input', e=>{ off.text=e.target.value; selected=-1; renderEditor(); offSchedule(50); });
+$('ofFiller').addEventListener('click', ()=>{ off.filler=!off.filler; $('ofFiller').classList.toggle('active', off.filler); offSchedule(0); });
 document.querySelectorAll('#ofRingSides .shape-btn').forEach(b=>{
   if(off.sides[b.dataset.side]) b.classList.add('active');
   b.addEventListener('click', ()=>{ const s=b.dataset.side; off.sides[s]=!off.sides[s]; b.classList.toggle('active', off.sides[s]); offSchedule(0); });
