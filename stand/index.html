@@ -926,6 +926,11 @@ At the default size:
 - Deployed: 300 mm deep and 406 mm tall at the top of the pegboard.
 - Every part fits a 220 × 220 bed, including the one-piece handle (212 mm). The split handle halves are there for smaller beds.
 
+## Web page
+The interactive configurator is live at https://cpendas-git.github.io/manapp-letters/stand/ (GitHub Pages, from the `cpendas-git/manapp-letters` repo). Set the panel size and divider height, scrub the fold, then download the STL set or the OpenSCAD model at that size. The STL files are built in your browser.
+
+The source is in `web/`. Edit `template.html`, `app.js` or `stand-core.js` (the geometry, which must match this .scad file), then run `web/deploy_stand.sh` in Git Bash to rebuild the page and publish it.
+
 ## Exporting
 - In the Customizer, set `part` (and `tray_index` for trays), then press F6 and F7.
 - Or run `./export_stls.sh` in Git Bash. You can pass overrides, e.g. `./export_stls.sh -D panel_width=180 -D panel_height=200`.
