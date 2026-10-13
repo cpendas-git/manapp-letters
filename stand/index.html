@@ -1,0 +1,2114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="Parametric collapsible craft display stand: set the front panel size, watch it fold, download the STL files.">
+<style>body{margin:0}[hidden]{display:none!important}</style>
+<title>Collapsible Display Stand</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: workbench. The 3D stage fills the left; a spec-sheet column on the right holds the panel size, the numbers it produces and the files. */
+:root {
+  --paper: #f7f2f5;
+  --surface: #fffbfd;
+  --ink: #2a1623;
+  --muted: #7d6575;
+  --line: #e7d9e2;
+  --magenta: #c0157e;
+  --magenta-ink: #ffffff;
+  --butter: #e9b40c;
+  --stage-top: #fcf8fa;
+  --stage-bottom: #efe3ea;
+  --ok: #1d7a4b;
+  --warn: #9c4f06;
+  --font-display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", sans-serif;
+  --font-body: "Figtree", "Segoe UI", system-ui, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #161015; --surface: #1e161c; --ink: #f6edf2; --muted: #b9a4b1; --line: #392a34;
+    --magenta: #ff5cb6; --magenta-ink: #2a0b1d; --butter: #ffd23f;
+    --stage-top: #251b22; --stage-bottom: #120c10; --ok: #5ed39a; --warn: #ffb35e;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #161015; --surface: #1e161c; --ink: #f6edf2; --muted: #b9a4b1; --line: #392a34;
+  --magenta: #ff5cb6; --magenta-ink: #2a0b1d; --butter: #ffd23f;
+  --stage-top: #251b22; --stage-bottom: #120c10; --ok: #5ed39a; --warn: #ffb35e;
+  color-scheme: dark;
+}
+
+html, body { background: var(--paper); color: var(--ink); }
+body { font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
+.wrap { max-width: 1320px; margin: 0 auto; padding-inline: 20px; padding-block: 20px 40px; display: grid; gap: 18px; }
+
+.masthead { display: grid; gap: 6px; }
+.masthead h1 { font-family: var(--font-display); font-weight: 800; font-size: clamp(1.7rem, 1.2rem + 1.6vw, 2.5rem); line-height: 1.05; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+.masthead h1 .swatch { display: inline-flex; gap: 4px; vertical-align: middle; margin-left: 10px; transform: translateY(-3px); }
+.masthead h1 .swatch i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+.lede { margin: 0; color: var(--muted); max-width: 68ch; }
+
+.bench { display: grid; grid-template-columns: minmax(0, 1fr) 350px; gap: 18px; align-items: start; }
+@media (max-width: 920px) { .bench { grid-template-columns: minmax(0, 1fr); } }
+
+/* stage */
+.stage { position: relative; border: 1px solid var(--line); border-radius: 16px; overflow: hidden;
+  background: linear-gradient(180deg, var(--stage-top), var(--stage-bottom));
+  height: clamp(380px, 72vh, 760px); }
+@media (max-width: 920px) { .stage { height: clamp(360px, 62vh, 620px); } }
+.stage canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+.stage canvas:active { cursor: grabbing; }
+.overlay { position: absolute; left: 12px; right: 12px; display: flex; gap: 10px; align-items: center; pointer-events: none; }
+.overlay > * { pointer-events: auto; }
+.overlay.top { top: 12px; justify-content: space-between; flex-wrap: wrap; }
+.overlay.bottom { bottom: 12px; }
+.step { font-family: var(--font-data); font-size: 12px; letter-spacing: 0.02em; padding: 6px 10px; border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent); border: 1px solid var(--line); color: var(--ink); max-width: 100%; }
+.views { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: color-mix(in srgb, var(--surface) 88%, transparent); }
+.views button { font: 600 12px var(--font-body); color: var(--muted); background: transparent; border: 0; padding: 7px 11px; cursor: pointer; }
+.views button + button { border-left: 1px solid var(--line); }
+.views button[aria-pressed="true"] { color: var(--ink); background: color-mix(in srgb, var(--magenta) 14%, transparent); }
+.bar { flex: 1; display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 90%, transparent); border: 1px solid var(--line); min-width: 0; }
+.play { flex: none; width: 38px; height: 38px; border-radius: 50%; border: 0; cursor: pointer; background: var(--magenta); color: var(--magenta-ink); display: grid; place-items: center; }
+.play svg { width: 16px; height: 16px; fill: currentColor; }
+.scrub { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.scrub-labels { display: flex; justify-content: space-between; font: 500 11px var(--font-data); color: var(--muted); letter-spacing: 0.03em; text-transform: uppercase; }
+input[type="range"] { width: 100%; accent-color: var(--magenta); margin: 0; }
+.nogl { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 24px; color: var(--muted); margin: 0; }
+
+/* sheet */
+.sheet { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding-inline: 18px; padding-block: 6px; display: grid; min-width: 0; }
+.sheet section { padding-block: 16px; display: grid; gap: 10px; min-width: 0; }
+.sheet section + section { border-top: 1px solid var(--line); }
+.sheet h2 { margin: 0; font: 700 11px var(--font-body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.field { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; }
+.field label { font-weight: 600; }
+.field input[type="range"] { grid-column: 1 / -1; }
+.num { display: inline-flex; align-items: baseline; gap: 4px; font-family: var(--font-data); }
+.num input { width: 5.6em; font: 500 15px var(--font-data); color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 4px 6px; text-align: right; font-variant-numeric: tabular-nums; }
+.num span { color: var(--muted); font-size: 12px; }
+.hint { margin: 0; color: var(--muted); font-size: 13px; }
+.linkish { justify-self: start; font: 600 13px var(--font-body); color: var(--magenta); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+
+.spec { margin: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 7px 14px; }
+.spec dt { color: var(--muted); font-size: 13px; }
+.spec dd { margin: 0; text-align: right; font: 500 13px var(--font-data); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.spec dd small { display: block; color: var(--muted); font-size: 11px; }
+.badge { display: inline-block; margin-top: 3px; padding: 1px 7px; border-radius: 999px; font: 600 11px var(--font-body); border: 1px solid currentColor; }
+.badge.ok { color: var(--ok); }
+.badge.warn { color: var(--warn); }
+
+.parts { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
+.parts li { display: grid; grid-template-columns: 2.6em minmax(0, 1fr); gap: 8px; font-size: 14px; }
+.parts b { font: 500 13px var(--font-data); color: var(--magenta); text-align: right; font-variant-numeric: tabular-nums; }
+.parts span small { color: var(--muted); }
+
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.primary, .secondary { font: 600 14px var(--font-body); border-radius: 10px; padding: 10px 14px; cursor: pointer; }
+.primary { background: var(--magenta); color: var(--magenta-ink); border: 1px solid var(--magenta); }
+.secondary { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+.primary:disabled { opacity: 0.6; cursor: progress; }
+textarea#copy-fallback { width: 100%; height: 140px; font: 12px var(--font-data); color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+
+button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--magenta); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="masthead">
+    <h1>Collapsible Display Stand<span class="swatch" aria-hidden="true"><i style="background:#d4199b"></i><i style="background:#f6b3dc"></i><i style="background:#ffc91a"></i></span></h1>
+    <p class="lede">A four-tier craft display that folds into a carry box. Set the front panel size and everything else follows: trays, side links, legs, latches and hooks. Scrub through the fold, then take the OpenSCAD model at that size.</p>
+  </header>
+
+  <main class="bench">
+    <section class="stage" id="stage" aria-label="3D view of the stand. Drag to orbit, scroll or pinch to zoom.">
+      <canvas id="view"></canvas>
+      <div class="overlay top">
+        <span class="step" id="step" aria-live="polite">Display</span>
+        <div class="views" role="group" aria-label="Camera view">
+          <button type="button" data-view="three" aria-pressed="true">3/4</button>
+          <button type="button" data-view="front" aria-pressed="false">Front</button>
+          <button type="button" data-view="side" aria-pressed="false">Side</button>
+          <button type="button" data-view="back" aria-pressed="false">Back</button>
+        </div>
+      </div>
+      <div class="overlay bottom">
+        <div class="bar">
+          <button type="button" class="play" id="play" aria-label="Play the fold animation">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path id="play-icon" d="M4 2.5v11l9-5.5z"/></svg>
+          </button>
+          <div class="scrub">
+            <input type="range" id="fold" min="0" max="1000" step="1" value="1000" aria-label="Fold position, from carry box to display">
+            <div class="scrub-labels"><span>Carry box</span><span>Display</span></div>
+          </div>
+        </div>
+      </div>
+      <p class="nogl" id="nogl" hidden>The 3D preview needs WebGL, which this browser has turned off. The sizes, parts list and model files on the right still work.</p>
+    </section>
+
+    <aside class="sheet" aria-label="Size and files">
+      <section>
+        <h2>Front panel</h2>
+        <div class="field">
+          <label for="pw">Width</label>
+          <span class="num"><input type="number" id="pw-num" min="120" max="250" step="0.1" value="194.2" aria-label="Panel width in millimetres"><span>mm</span></span>
+          <input type="range" id="pw" min="120" max="250" step="0.1" value="194.2">
+        </div>
+        <div class="field">
+          <label for="ph">Height</label>
+          <span class="num"><input type="number" id="ph-num" min="120" max="250" step="0.1" value="213" aria-label="Panel height in millimetres"><span>mm</span></span>
+          <input type="range" id="ph" min="120" max="250" step="0.1" value="213">
+        </div>
+        <p class="hint" id="size-hint">Each side runs from 120 to 250 mm. Tier height, tray depth, link spacing, legs and hook layout are all worked out from these two numbers.</p>
+        <button type="button" class="linkish" id="reset">Reset to 194.2 × 213 mm</button>
+      </section>
+
+      <section>
+        <h2>Dividers</h2>
+        <div class="field">
+          <label for="dh">Divider height</label>
+          <span class="num"><input type="number" id="dh-num" min="30" max="100" step="1" value="60" aria-label="Divider height in percent of the tray height"><span>%</span></span>
+          <input type="range" id="dh" min="30" max="100" step="1" value="60">
+        </div>
+        <p class="hint" id="dh-hint">Share of the tray height. Same outline as the side walls: flat, then a diagonal down to the front.</p>
+      </section>
+
+      <section>
+        <h2>What you get</h2>
+        <dl class="spec" id="spec"></dl>
+      </section>
+
+      <section>
+        <h2>Parts to print</h2>
+        <ul class="parts" id="parts"></ul>
+      </section>
+
+      <section>
+        <h2>Model files</h2>
+        <div class="actions">
+          <button type="button" class="primary" id="stl" hidden>Download STL files (.zip)</button>
+          <button type="button" class="secondary" id="download" hidden>Download OpenSCAD model (.zip)</button>
+          <button type="button" class="secondary" id="copy">Copy OpenSCAD file</button>
+          <button type="button" class="secondary" id="dl-fix" hidden>Allow downloads</button>
+        </div>
+        <p class="hint" id="dl-note">STL files are built in your browser for the panel size above, already laid out for printing, with a parts list. The OpenSCAD files are set to the same size.</p>
+        <textarea id="copy-fallback" readonly hidden aria-label="OpenSCAD file text"></textarea>
+      </section>
+    </aside>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/BufferGeometryUtils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/math/ConvexHull.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/geometries/ConvexGeometry.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script type="text/plain" id="src-scad">// =====================================================================
+//  Collapsible Tiered Display Stand  -  fully parametric (OpenSCAD)
+// ---------------------------------------------------------------------
+//  Carry box  <->  stair-step display with a scalloped pegboard.
+//
+//  LINKAGE  Every tray has up to three snap-pin pivots per side, at a
+//  Front / Middle / Back position (F, M, B), all at the same height.
+//  Each pair of neighbouring trays is joined on each side by two parallel
+//  bars (upper F -> lower M, and upper M -> lower B). Bars that line up are
+//  merged into one longer bar (top F -> next M -> next B), so each side
+//  has 2- and 3-hole bars. The trays always stay level.
+//      collapsed : bars lean forward,  trays stacked straight up
+//      deployed  : bars lean backward, each tier steps back 2 x pin spacing
+//  The tier height is the same in both states. In between, the trays lift
+//  apart slightly (over-centre), so both states are stable.
+//
+//  LEGS     Two wide rear panels slide up into a slot behind the top tray
+//  and are snap-pinned there. They stand on the table in both states.
+//  When collapsed, a turn latch on the second tray pokes through a window
+//  in each leg; turning it 90 deg locks the stack for carrying.
+//
+//  HANDLE   Pivots in the middle of the top tray, near the centre of mass, so
+//  the box hangs level when carried. It folds back against the top tray.
+//
+//  PEGBOARD Box mode: its side edges slide down into four corner hooks on
+//  the bottom two trays. Each hook is an extension of the tray side wall
+//  that wraps around the panel edge from the side. Display mode: it drops
+//  into the slot behind the top tray.
+//
+//  Window -> Customizer to change parameters; "part" selects what to
+//  render or export.
+// =====================================================================
+
+/* [What to show / export] */
+part = "assembly"; // [assembly, tray, divider, bar_2, bar_3, pin_bar, pin_leg, pin_latch, latch, leg, handle, handle_left, handle_right, pegboard, hook, pins_plate]
+// Tray to export when part = "tray" (0 = bottom ... num_trays-1 = top)
+tray_index = 0;
+// 0 = collapsed carry box, 1 = deployed stairs (values in between animate)
+deploy = 1; // [0:0.05:1]
+// Handle angle in degrees (0 = upright, + = folded back). -1 = automatic
+handle_angle = -1;
+show_pegboard = true;
+show_hooks = true;
+show_dividers = true;
+show_pins = true;
+
+/* [Size - set by the front panel] */
+// Width of the front pegboard panel (mm). Everything else follows; the trays are 5.8 mm wider
+panel_width = 194.2; // [120:0.1:250]
+// Height of the front pegboard panel (mm). Sets the tier height: panel = tiers x tier height - 3
+panel_height = 213; // [120:0.1:250]
+num_trays = 4; // [2:1:6]
+// Tray depth as a fraction of tray width
+depth_ratio = 0.5; // [0.4:0.01:0.7]
+num_compartments = 4; // [1:1:8]
+
+/* [Tray shape] */
+// Number of scallops on each front lip
+lip_scallops = 7;
+// Height of the scallop tops on the front lip (fraction of tray height)
+front_height = 0.42;
+// Height of the lip between scallops (fraction of tray height)
+lip_cusp_height = 0.24;
+// Side wall height at the front corner (fraction of tray height); the wall rises in a short chamfer
+side_front_height = 0.6;
+// Where the side wall reaches full height (fraction of depth)
+side_full_at = 0.22;
+// Divider height (fraction of tray height). Dividers copy the side wall's outline at this height: a flat top from the back, then a diagonal down to the front
+divider_height = 0.6; // [0.3:0.01:1]
+
+/* [Linkage] */
+// Position of the front pivot (fraction of depth)
+first_pin = 0.30;
+// Spacing between the F, M and B pivots (fraction of depth). Each tier steps back 2x this when deployed
+pin_spacing = 0.30;
+// Pivot height (fraction of tray height)
+pin_height = 0.31;
+bar_width = 11;
+bar_thick = 5;
+
+/* [Pegboard & hooks] */
+pegboard_thickness = 5;
+// Scallops along the top edge (sets the scallop size all round)
+pegboard_scallops = 7;
+// How deep the pegboard drops into the top tray's slot
+pegboard_socket_depth = 22;
+// Gap between the pegboard and the tray fronts in box mode (room for the hook catches)
+pegboard_standoff = 4.5;
+hook_cols = 5;
+// Width used by the hook columns (fraction of pegboard width)
+hook_col_span = 0.635;
+// Height of each slot group's centre (fraction of pegboard height, from the bottom)
+hook_groups = [0.40, 0.78];
+// Distance between the two slots of one hook
+slot_pitch = 23;
+slot_width = 5.6;
+slot_height = 12;
+hook_length = 55;
+// Upward angle of the hook arm (degrees)
+hook_rise = 12;
+hook_tip = 12;
+hook_thick = 5;
+
+/* [Panel corner hooks] */
+// Width of the corner hooks that hold the pegboard (across the front)
+clip_width = 17;
+clip_height = 25;
+// Thickness of the part of the hook in front of the panel
+clip_front = 2.5;
+
+/* [Handle, legs & latches] */
+// Handle pivot position along the top tray (fraction of depth). 0.5 = the middle, close to the centre of mass, so the box hangs level
+handle_position = 0.5;
+// Shortest pivot-to-grip distance (it grows if needed so the handle can fold back over the top tray)
+handle_reach = 55;
+handle_grip_d = 16;
+handle_arm_width = 14;
+handle_arm_thick = 5;
+// Width of each rear leg (fraction of tray width)
+leg_width = 0.40;
+latch_length = 40;
+latch_width = 10;
+latch_thick = 5;
+// Tray that carries the turn latches (0 = bottom). It must not be the top tray
+latch_tray = 1;
+// Latch height on that tray (fraction of tray height)
+latch_height = 0.40;
+
+/* [Fit & printing] */
+wall = 2.4;
+floor_t = 2.4;
+// Vertical air gap between stacked trays
+tray_gap = 1;
+// Sliding clearance
+clr = 0.3;
+divider_t = 2;
+pin_d = 5;
+// Raised ring under each bar so it doesn't rub the wall
+washer_t = 1;
+$fn = 48;
+
+// =====================================================================
+//  Derived values
+// =====================================================================
+W  = panel_width + 2*wall + 1;   // tray outer width
+H  = (panel_height + 3) / num_trays;   // tier height
+D  = depth_ratio * W;            // tray outer depth (the top tray is deeper by the slot)
+th = H - tray_gap;
+N  = num_trays;
+NC = num_compartments;
+W_in   = W - 2*wall;
+comp_w = W_in / NC;
+
+hS = front_height * th;          // scallop-top height of the front lip
+hC = lip_cusp_height * th;       // lip height between scallops
+hT = side_front_height * th;     // side wall height at the front corner
+yT = side_full_at * D;           // side wall is full height from here back
+function side_h(y) = y >= yT ? th : hT + y / yT * (th - hT);
+
+delta = pin_spacing * D;         // F -> M -> B spacing
+yF    = first_pin * D;
+function pin_y(p) = yF + p*delta;
+washer_r = (pin_d + 4.5) / 2;
+pz    = max(washer_r + 1, min(pin_height * th, side_h(pin_y(0)) - washer_r - 1.5));   // stays inside the side wall
+L     = sqrt(H*H + delta*delta); // pin spacing along a bar
+alpha = atan(delta / H);
+theta_c = 90 + alpha;            // collapsed bar angle, measured from +Y (backwards)
+theta_d = 90 - alpha;            // deployed
+theta   = theta_c + deploy * (theta_d - theta_c);
+function tray_pos(k) = k * [0, delta + L*cos(theta), L*sin(theta)];
+
+// tray k has pivot p (0=F, 1=M, 2=B) if bar c = k+p exists (1 <= c <= N)
+function has_pin(k, p) = (k + p >= 1) && (k + p <= N);
+function bar_lo(c) = max(0, c - 2);
+function bar_hi(c) = min(N - 1, c);
+function bar_pins(c) = bar_hi(c) - bar_lo(c) + 1;
+function sum(v, i = 0) = i >= len(v) ? 0 : v[i] + sum(v, i + 1);
+
+tp    = pegboard_thickness;
+leg_t = tp;                      // legs share the slot with the pegboard
+cg    = tp + 2*clr;              // slot gap behind the top tray
+D_top = D + cg + wall;           // top tray depth incl. slot + outer wall
+sd    = max(12, min(pegboard_socket_depth, 0.42 * th));
+ledge_t = 2.5;
+z_ledge = th - sd - ledge_t;     // underside of the slot ledge (legs bear here)
+
+Wp = W - 2*wall - 1;             // pegboard width (fits the slot and the hooks)
+Hp = (N - 1)*H + th - 2;         // covers the box front, stands on the bottom hooks
+ps_r = 1.03 * Wp / (2*pegboard_scallops);
+clip_w = max(clip_width, 0.76*ps_r + 6);   // corner hooks always overlap the scallop valleys
+clip_h = min(clip_height, 0.8*th);
+// slot groups (centres), kept clear of the top scallops
+g_hi = min(hook_groups[1]*Hp, Hp - 1.76*ps_r - slot_pitch/2 - slot_height/2 - 3);
+g_lo = min(hook_groups[0]*Hp, g_hi - (slot_pitch + slot_height + 4));   // keep the two groups apart on short panels
+// the lower hooks must clear the top tray's rim when the panel stands in the back slot; short panels get one row
+slot_groups = g_lo >= max(slot_pitch/2 + slot_height/2 + 3, sd + slot_pitch/2 + 7.5) ? [g_lo, g_hi] : [g_hi];
+
+g_stand = pegboard_standoff;
+
+ha_x = washer_t + 0.1;                      // handle arms sit straight on the side wall (on a washer, like the bars)
+hp_y = handle_position * D;                  // handle pivot, near the centre of mass
+hp_z = th - 9;
+// long enough for the grip to swing back over the top tray's back corner
+reach = max(handle_reach, sqrt(pow(D_top - hp_y, 2) + pow(th - hp_z, 2)) + handle_grip_d/2 + 4);
+// rest angle when folded back onto the legs
+// folded back, the grip swings down behind the top tray until it first touches
+// the leg pin heads, the outer back wall or the legs
+function _d_rect(py, pz, y0, y1, z0, z1) = let(dy = max(y0 - py, 0, py - y1), dz = max(z0 - pz, 0, pz - z1)) sqrt(dy*dy + dz*dz);
+function _grip_hits(a) = let(gy = hp_y + reach*sin(a), gz = hp_z + reach*cos(a), r = handle_grip_d/2 + 0.5)
+       _d_rect(gy, gz, -1e4, D_top, 0, th) < r
+    || _d_rect(gy, gz, -1e4, D_top + 0.2 + 2, z_ledge/2 - (pin_d + 5)/2, z_ledge/2 + (pin_d + 5)/2) < r
+    || _d_rect(gy, gz, -1e4, D + clr + leg_t, -1e4, 0) < r;
+// the arms sit in the same layer as the side bars: they must not swing into the bar ends on the top tray
+function _seg_dist(p, a, b) = let(ab = b - a, t = max(0, min(1, ((p - a) * ab) / (ab * ab)))) norm(p - (a + t*ab));
+function _arm_hits(a) = let(piv = [hp_y, hp_z], g = [hp_y + reach*sin(a), hp_z + reach*cos(a)])
+    min([for (q = [0:2]) if (has_pin(N-1, q)) _seg_dist([pin_y(q), pz], piv, g)]) < handle_arm_width/2 + bar_width/2 + 0.5;
+_hits = [for (a = [0:0.25:180]) if (_grip_hits(a) || _arm_hits(a)) a];
+handle_rest = len(_hits) > 0 ? _hits[0] - 0.25 : 180;
+grip_low = (N-1)*H + hp_z + reach*cos(handle_rest) - handle_grip_d/2;   // folded grip, collapsed
+
+lw     = leg_width * W;
+leg_x0 = [wall + 1, W - wall - 1 - lw];      // left edge of each leg
+leg_cx = [for (x = leg_x0) x + lw/2];
+leg_len = (N - 1)*H + z_ledge - 0.1;
+leg_pin_z  = z_ledge / 2;                    // top-tray coordinates
+leg_pin_dx = 0.3 * lw;
+latch_k = min(latch_tray, N - 2);           // tray that carries the latches
+latch_shoulder = clr + leg_t + 0.6;          // knob sits just behind the leg
+latch_hub = pin_d + 9;                       // = pin head + 4
+win_w    = max(0.28*lw, latch_hub + 3);        // window must pass the hub when the latch is open
+win_rise = 7;                                // leg rises while it clears the latch
+latch_len = max(latch_length, win_w + 14);   // knob always overlaps the window edges
+// low enough that the open (vertical) knob stays under the next tier's floor
+latch_z = max(6, min(latch_height * th, H - 1.5 - latch_len/2));
+latch_abs = latch_k*H + latch_z;            // height above the floor when collapsed (= leg coords)
+// keep the latch pin's barb clear of the first/last divider rib inside the tray
+latch_cx = NC > 1 ? [min(leg_cx[0], wall + comp_w - 6.05), max(leg_cx[1], W - wall - comp_w + 6.05)] : leg_cx;
+win_dx = latch_cx[0] - leg_cx[0];           // window offset from the leg centre (left leg; the right leg is the same part turned over)
+win_lo = latch_abs - latch_len/2 - 1.5 - win_rise;
+win_hi = latch_abs + latch_len/2 + 1.5;
+
+pin_head_d = pin_d + 5;
+pin_head_t = 2;
+grip_bar    = washer_t + wall + bar_thick + 0.3;
+grip_leg    = wall + cg + wall + 0.2;
+grip_handle = handle_arm_thick + ha_x + wall + 0.2;   // same as grip_bar: the handle uses bar pins
+grip_latch  = (latch_thick - pin_head_t - 0.2) + latch_shoulder + wall + 0.2;
+
+n_bar_pins = 2 * sum([for (k = [0:N-1], p = [0:2]) has_pin(k, p) ? 1 : 0]);
+n_bar2 = 2 * len([for (c = [1:N]) if (bar_pins(c) == 2) c]);
+n_bar3 = 2 * len([for (c = [1:N]) if (bar_pins(c) == 3) c]);
+
+// --------------------------------------------------------- sanity checks
+assert(pin_y(0) - bar_width/2 > 1, "Front pivot too close to the tray front");
+assert(pin_y(2) + 6 < D, "Back pivot runs off the tray: reduce first_pin or pin_spacing");
+assert(delta * H / L > bar_width + 4, "Bars would touch: increase pin_spacing or reduce bar_width");
+assert(pz + (pin_d + 4.5)/2 + 1 < side_h(pin_y(0)), "Front pivot sits above the side wall: lower pin_height");
+assert(2*delta < D, "pin_spacing too large: tiers would not overlap");
+assert(hp_z + (pin_d + 4.5)/2 + 1 < side_h(hp_y), "Handle pivot is too close to the top of the side wall: make the panel taller");
+assert(latch_len > win_w + 12, "Latch too short to overlap the leg window");
+assert(win_lo > 8 && win_hi < leg_len - 30, "Latch window does not fit in the leg: change latch_tray / latch_height");
+assert(latch_z + latch_len/2 <= H - 1.4, "Open latch would hit the tier above: make the panel taller");
+assert(grip_low > latch_abs + latch_len/2 + 1, "Folded handle would hit the latches");
+assert(z_ledge > 9, "pegboard_socket_depth too deep for this tray height");
+echo(str("num_trays_used = ", N));
+echo(str("Bar pin spacing L = ", L, " mm, bar tilt = +/-", alpha, " deg, tier step when deployed = ", 2*delta, " mm"));
+echo(str("Collapsed: ", W + 2*(ha_x + handle_arm_thick), " x ", D_top + g_stand + tp + clr + clip_front, " x ", (N-1)*H + th, " mm (+ handle)"));
+echo(str("Deployed: depth ", D_top + (N-1)*2*delta + g_stand + tp + clr + clip_front, " mm, height to pegboard top ", (N-1)*H + th - sd + Hp, " mm"));
+echo(str("BOM: trays ", N, ", dividers ", N*(NC-1), ", bar_2 x", n_bar2, ", bar_3 x", n_bar3, ", pin_bar x", n_bar_pins + 2,
+         " (", n_bar_pins, " bars + 2 handle), pin_leg x4, latch + pin_latch x2, legs x2, hooks x", hook_cols*len(slot_groups)));
+
+// ---------------------------------------------------------- colours
+C_TRAY = "#d4199b"; C_PINK = "#f6b3dc"; C_YEL = "#ffcf1a";
+
+// =====================================================================
+//  2D profiles
+// =====================================================================
+// side wall: full height almost to the front, with a short chamfer at the front corner
+module side_profile(Dk) {
+    union() {
+        offset(r = 3) offset(delta = -3)
+            polygon([[0, 0], [Dk, 0], [Dk, th], [yT, th], [0, hT]]);
+        square([Dk, 4]);
+    }
+}
+
+// front lip with shallow round scallops
+module lip_2d() {
+    c  = W / lip_scallops;
+    sg = hS - hC;
+    R  = (c*c/4 + sg*sg) / (2*sg);
+    intersection() {
+        square([W, hS]);
+        union() {
+            square([W, hC]);
+            for (i = [0:lip_scallops-1]) translate([c*(i + 0.5), hS - R]) circle(R, $fn = 120);
+        }
+    }
+}
+
+
+// =====================================================================
+//  TRAY
+// =====================================================================
+module tray(k) {
+    top = (k == N-1);
+    Dk  = top ? D_top : D;
+    rib_w = 1.2; rib_d = 1.6;
+    difference() {
+        union() {
+            cube([W, D, floor_t]);                                   // floor
+            translate([0, D - wall, 0]) cube([W, wall, th]);         // back wall
+            for (x = [0, W - wall]) translate([x, 0, 0])              // side walls
+                rotate([90, 0, 90]) linear_extrude(wall) side_profile(Dk);
+            translate([0, wall, 0]) rotate([90, 0, 0])                // scalloped lip
+                linear_extrude(wall) lip_2d();
+            // divider guide ribs (back wall + lip)
+            if (NC > 1) for (j = [1:NC-1]) {
+                xj = wall + j*comp_w;
+                for (s = [-1, 1]) {
+                    rx = xj + s*(divider_t/2 + clr/2) + (s < 0 ? -rib_w : 0);
+                    translate([rx, D - wall - rib_d, floor_t]) cube([rib_w, rib_d, min(divider_height*th + 1, th) - floor_t]);
+                    translate([rx, wall - 0.01, floor_t]) cube([rib_w, rib_d, min(hC, divider_top(wall + 0.3)) - floor_t]);
+                }
+            }
+            // washers under the side bars (and under the handle arms on the top tray)
+            for (q = concat([for (p = [0:2]) if (has_pin(k, p)) [pin_y(p), pz]], top ? [[hp_y, hp_z]] : [])) {
+                translate([0, q[0], q[1]]) rotate([0, -90, 0]) cylinder(d = pin_d + 4.5, h = washer_t);
+                translate([W, q[0], q[1]]) rotate([0, 90, 0]) cylinder(d = pin_d + 4.5, h = washer_t);
+            }
+            // corner hooks that hold the pegboard (bottom two trays)
+            if (k <= 1) {
+                panel_hook(k == 0);
+                translate([W, 0, 0]) mirror([1, 0, 0]) panel_hook(k == 0);
+            }
+            if (top) {
+                translate([0, D + cg, 0]) cube([W, wall, th]);                                  // outer back wall
+                translate([wall, D - 0.01, z_ledge]) cube([W - 2*wall, cg + 0.02, ledge_t]);    // slot ledge
+            }
+        }
+        // pivot holes
+        for (p = [0:2]) if (has_pin(k, p))
+            translate([-washer_t - 1, pin_y(p), pz]) rotate([0, 90, 0]) cylinder(d = pin_d + 0.2, h = W + 2*washer_t + 2);
+        if (top) {
+            translate([-washer_t - 1, hp_y, hp_z]) rotate([0, 90, 0]) cylinder(d = pin_d + 0.2, h = washer_t + wall + 2);
+            translate([W - wall - 1, hp_y, hp_z]) rotate([0, 90, 0]) cylinder(d = pin_d + 0.2, h = washer_t + wall + 2);
+            // leg pin holes through outer wall + inner wall
+            for (cx = leg_cx, dx = [-leg_pin_dx, leg_pin_dx])
+                translate([cx + dx, D - wall - 1, leg_pin_z]) rotate([-90, 0, 0]) cylinder(d = pin_d + 0.2, h = cg + 2*wall + 2);
+        }
+        if (k == latch_k)   // latch pivots in the back wall
+            for (cx = latch_cx) translate([cx, D - wall - 1, latch_z]) rotate([-90, 0, 0]) cylinder(d = pin_d + 0.2, h = wall + 2);
+    }
+}
+
+// Corner hook for the pegboard (front-left corner; mirrored for the right).
+// It grows forward out of the side wall, flush with the tray's side face,
+// and wraps around the panel's side edge: a back part between the tray and
+// the panel, a side web, and a front lip that holds the panel from the
+// front. The panel slides down into the vertical slot. The bottom tray's
+// hooks have a floor that the panel stands on.
+module panel_hook(with_floor) {
+    cw  = clip_w;
+    ch  = clip_h;
+    ys0 = -g_stand - tp - clr;           // slot front face
+    ys1 = -g_stand + clr;                // slot back face
+    y0  = ys0 - clip_front;              // hook front face
+    rc  = cw - 1.5;
+    difference() {
+        intersection() {
+            // front view: square outer corner, big rounded inner top corner
+            rotate([90, 0, 0]) translate([0, 0, -wall]) linear_extrude(-y0 + wall)
+                hull() { square([1, ch]); square([cw, 1]); translate([cw - rc, ch - rc]) circle(rc, $fn = 72); }
+            // side view: rounded top-front edge
+            rotate([90, 0, 90]) linear_extrude(cw)
+                hull() { translate([y0, 0]) square([-y0 + wall, 1]); translate([wall - 1, 0]) square([1, ch]);
+                         translate([y0 + 6, ch - 6]) circle(6); }
+        }
+        translate([2, ys0, with_floor ? 2 : -1]) cube([cw, ys1 - ys0, ch + 3]);
+    }
+}
+
+// =====================================================================
+//  DIVIDER: the side wall's outline scaled down to divider_height. A flat
+//  top from the back, then a diagonal down to the front, kinked at the same
+//  place as the walls.
+// =====================================================================
+function divider_top(y) = divider_height * side_h(y);   // height above the tray bottom at depth y
+module divider_2d() {
+    y0 = wall + 0.3;                          // front end, against the lip
+    Ld = D - 2*wall - 0.6;                    // ends sit against the lip and back wall
+    hb = divider_top(yT) - floor_t;           // flat stretch
+    hf = divider_top(y0) - floor_t;           // front end
+    rr = min(3, hf/2 - 0.05);                 // corner rounding (smaller on very low dividers)
+    union() {
+        offset(r = rr) offset(delta = -rr) polygon([[0, 0], [Ld, 0], [Ld, hb], [yT - y0, hb], [0, hf]]);
+        square([Ld, min(3, hf)]);
+    }
+}
+module divider() { linear_extrude(divider_t) divider_2d(); }   // print flat
+
+// =====================================================================
+//  SIDE BARS (bar_2 = two pivots, bar_3 = three pivots)
+// =====================================================================
+module bar_2d(n) {
+    difference() {
+        hull() { circle(d = bar_width); translate([(n-1)*L, 0]) circle(d = bar_width); }
+        for (i = [0:n-1]) translate([i*L, 0]) circle(d = pin_d + 0.4);
+    }
+}
+module bar(n) { linear_extrude(bar_thick) bar_2d(n); }
+
+// =====================================================================
+//  COMPRESSION LOCK PIN  (axis +Z, head at z = 0)
+//  Two prongs split by a slot that runs from just under the head to the tip.
+//  The arrowhead barb squeezes through the holes, then springs open behind
+//  the wall and its shoulder locks the pin. The long prongs keep the bending
+//  strain around 2 %, which PETG and PLA take without cracking.
+//  Flats at +/-Y on the shaft and one under the head: it prints lying down.
+// =====================================================================
+pin_barb_len = 3.5;
+pin_barb_d   = pin_d + 1.2;     // shoulder that catches behind the wall (0.5 mm per side over the hole)
+pin_slot_w   = 2;               // room for the prongs to close up
+pin_slot_root = 1;              // the split starts this far below the head
+module snap_pin(grip) {
+    fw = pin_d - 0.6;
+    barb_len = pin_barb_len; barb_d = pin_barb_d;
+    slot_w = pin_slot_w; slot_len = grip - pin_slot_root + barb_len;
+    tot = pin_head_t + grip + barb_len;
+    difference() {
+        union() {
+            intersection() {
+                cylinder(d = pin_head_d, h = pin_head_t);
+                translate([-50, -fw/2, -1]) cube([100, 100, 100]);
+            }
+            intersection() {
+                union() {
+                    translate([0, 0, pin_head_t - 0.01]) cylinder(d = pin_d, h = grip + 0.02);
+                    translate([0, 0, pin_head_t + grip]) cylinder(d1 = barb_d, d2 = pin_d - 0.8, h = barb_len);
+                }
+                translate([-50, -fw/2, -1]) cube([100, fw, 100]);
+            }
+        }
+        translate([-slot_w/2, -50, tot - slot_len]) cube([slot_w, 100, slot_len + 1]);
+    }
+}
+module pin_x(grip) { rotate([0, 90, 0]) snap_pin(grip); }      // axis along +X, head at x = 0
+
+// =====================================================================
+//  LEG (flat: X = width, Y = length from the floor, Z = thickness)
+// =====================================================================
+module leg() {
+    difference() {
+        linear_extrude(leg_t) offset(r = 4) offset(delta = -4) square([lw, leg_len]);
+        // latch window
+        translate([lw/2 + win_dx, (win_lo + win_hi)/2, -1]) linear_extrude(leg_t + 2)
+            offset(r = 3) offset(delta = -3) square([win_w, win_hi - win_lo], center = true);
+        // pin holes
+        for (dx = [-leg_pin_dx, leg_pin_dx])
+            translate([lw/2 + dx, leg_len - (z_ledge - 0.1) + leg_pin_z, -1]) cylinder(d = pin_d + 0.4, h = leg_t + 2);
+    }
+}
+module leg_placed(i) {    // in top-tray coordinates; the right leg is the same part turned over
+    translate([leg_x0[i], D + clr + leg_t, z_ledge - 0.1 - leg_len]) rotate([90, 0, 0])
+        if (i == 0) leg(); else translate([lw, 0, leg_t]) rotate([0, 180, 0]) leg();
+}
+
+// =====================================================================
+//  TURN LATCH KNOB (axis +Z; z = 0 is the face against the tray side of
+//  the knob, the shoulder below it bears on the bottom tray's back wall)
+// =====================================================================
+module latch() {
+    difference() {
+        union() {
+            hull() for (s = [-1, 1]) translate([s*(latch_len - latch_width)/2, 0, 0]) cylinder(d = latch_width, h = latch_thick);
+            cylinder(d = latch_hub, h = latch_thick);   // hub
+            translate([0, 0, -latch_shoulder]) cylinder(d = 8, h = latch_shoulder + 0.01);
+        }
+        translate([0, 0, -latch_shoulder - 1]) cylinder(d = pin_d + 0.4, h = latch_shoulder + latch_thick + 2);
+        translate([0, 0, latch_thick - pin_head_t - 0.2]) cylinder(d = pin_head_d + 0.6, h = 5);   // pin head recess
+        // turn arrows
+        for (s = [-1, 1]) translate([s*(latch_len/2 - 7), 0, latch_thick - 0.6])
+            linear_extrude(1) rotate(s > 0 ? 0 : 180) polygon([[-2, -3], [2, 0], [-2, 3]]);
+    }
+}
+
+// =====================================================================
+//  HANDLE (pivot at origin, arms along +Z, grip along X)
+// =====================================================================
+module handle() {
+    at = handle_arm_thick; aw = handle_arm_width; R = reach;
+    xs = [-ha_x - at, W + ha_x];
+    difference() {
+        union() {
+            for (x = xs) translate([x, 0, 0]) rotate([0, 90, 0]) linear_extrude(at)
+                hull() { circle(d = aw); translate([-R, 0]) circle(d = aw); }
+            intersection() {   // round grip with two flats so it prints flat
+                translate([-ha_x - at, 0, R]) rotate([0, 90, 0]) cylinder(d = handle_grip_d, h = W + 2*ha_x + 2*at);
+                translate([-500, -aw/2, -500]) cube([1000, aw, 1000]);
+            }
+        }
+        for (x = xs) translate([x - 1, 0, 0]) rotate([0, 90, 0]) cylinder(d = pin_d + 0.4, h = at + 2);
+    }
+}
+lap_len = 40;
+module handle_half(side) {   // two halves with a glued lap joint in the grip
+    c = W/2; big = 1000;
+    difference() {
+        intersection() {
+            handle();
+            union() {
+                translate(side == 0 ? [-big, -big, -big] : [c + lap_len/2, -big, -big])
+                    cube([side == 0 ? big + c - lap_len/2 : big, 2*big, 2*big]);
+                translate([c - lap_len/2, side == 0 ? -big : 0, -big]) cube([lap_len, big, 2*big]);
+            }
+        }
+        for (dx = [-lap_len/4, lap_len/4]) translate([c + dx, -20, reach]) rotate([-90, 0, 0]) cylinder(d = 2, h = 40);
+    }
+}
+HA = handle_angle >= 0 ? handle_angle : (deploy > 0 ? handle_rest : 0);
+
+// =====================================================================
+//  PEGBOARD (own coords: X centred, Z up from the bottom edge,
+//            Y = thickness from 0 (front face) to tp)
+// =====================================================================
+function slot_col_x() = [for (i = [0:hook_cols-1]) hook_cols == 1 ? 0 : (i - (hook_cols-1)/2) * hook_col_span*Wp/(hook_cols-1)];
+module pegboard_2d() {
+    r  = ps_r;
+    nt = pegboard_scallops;
+    pt = (Wp - 2*r) / (nt - 1);
+    ns = max(1, round((Hp - 2*r) / (1.94*r)));
+    pside = (Hp - 2*r) / ns;
+    difference() {
+        union() {
+            translate([-Wp/2 + r, 0]) square([Wp - 2*r, Hp - r]);
+            translate([-Wp/2, 0]) square([Wp, r]);                        // square bottom corners
+            for (i = [0:nt-1]) translate([-Wp/2 + r + i*pt, Hp - r]) circle(r, $fn = 72);
+            for (s = [-1, 1], j = [0:ns]) translate([s*(Wp/2 - r), r + j*pside]) circle(r, $fn = 72);
+        }
+        for (x = slot_col_x(), gz = slot_groups, s = [-1, 1])
+            translate([x, gz + s*slot_pitch/2]) offset(r = 1) offset(delta = -1)
+                square([slot_width, slot_height], center = true);
+    }
+}
+module pegboard() { translate([0, tp, 0]) rotate([90, 0, 0]) linear_extrude(tp) pegboard_2d(); }
+
+// =====================================================================
+//  HOOK (profile: u = out from the board front face, v = up;
+//        v = 0 is the centre of the upper slot)
+// =====================================================================
+module hook_2d() {
+    sp = slot_pitch; hl = hook_length; t = tan(hook_rise);
+    vt = 4;                                  // top of the base
+    ab = vt - 6;                             // underside of the arm at the base
+    offset(r = 0.8) offset(delta = -0.8) union() {
+        translate([0, -sp - 6]) square([5, sp + 6 + vt]);                         // base on the board
+        translate([-tp - 3, -3.5]) square([tp + 3.01, 7]);                       // upper tab
+        translate([-tp - 3, -3.5 - 5]) square([2.4, 5 + 7]);                     // catch behind the board
+        translate([-tp - 0.8, -sp - 3.5]) square([tp + 0.81, 7]);                // lower peg
+        polygon([[0, ab], [hl, ab + hl*t], [hl, vt + hl*t], [0, vt]]);           // arm
+        translate([hl - 5, ab + hl*t]) square([5, (vt - ab) + hook_tip]);         // tip
+    }
+}
+module hook() { linear_extrude(hook_thick) hook_2d(); }   // print flat
+module hook_on_board() {   // pegboard coords, at a slot pair (z = upper slot centre)
+    translate([-hook_thick/2, 0, 0]) rotate([90, 0, 90]) linear_extrude(hook_thick) mirror([1, 0]) hook_2d();
+}
+
+// =====================================================================
+//  ASSEMBLY
+// =====================================================================
+function pin_world(k, p, side) = tray_pos(k) + [side == 0 ? 0 : W, pin_y(p), pz];
+
+module bar_placed(c, side) {
+    kh = bar_hi(c); p = c - kh;
+    a  = pin_world(kh, p, side);
+    b  = pin_world(kh - 1, p + 1, side);
+    ang = atan2(b[2] - a[2], b[1] - a[1]);
+    x0 = side == 0 ? -washer_t - 0.1 - bar_thick : W + washer_t + 0.1;
+    translate([x0, a[1], a[2]])
+        multmatrix([[0, 0, 1, 0], [cos(ang), -sin(ang), 0, 0], [sin(ang), cos(ang), 0, 0], [0, 0, 0, 1]])
+            bar(bar_pins(c));
+}
+
+module pegboard_with_hooks() {
+    color(C_PINK) pegboard();
+    if (show_hooks) color(C_TRAY)
+        for (x = slot_col_x(), gz = slot_groups) translate([x, 0, gz + slot_pitch/2]) hook_on_board();
+}
+
+module all_pins() {
+    for (k = [0:N-1]) translate(tray_pos(k)) for (p = [0:2]) if (has_pin(k, p)) {
+        translate([-washer_t - 0.1 - bar_thick - 0.2 - pin_head_t, pin_y(p), pz]) pin_x(grip_bar);
+        translate([W + washer_t + 0.1 + bar_thick + 0.2 + pin_head_t, pin_y(p), pz]) mirror([1, 0, 0]) pin_x(grip_bar);
+    }
+    translate(tray_pos(N-1)) {
+        for (cx = leg_cx, dx = [-leg_pin_dx, leg_pin_dx])
+            translate([cx + dx, D_top + 0.2 + pin_head_t, leg_pin_z]) rotate([0, 0, -90]) pin_x(grip_leg);
+        translate([-ha_x - handle_arm_thick - 0.2 - pin_head_t, hp_y, hp_z]) pin_x(grip_bar);
+        translate([W + ha_x + handle_arm_thick + 0.2 + pin_head_t, hp_y, hp_z]) mirror([1, 0, 0]) pin_x(grip_bar);
+    }
+    for (cx = latch_cx) translate(tray_pos(latch_k) + [cx, D + 0.05 + latch_shoulder, latch_z]) rotate([-90, 0, 0])
+        translate([0, 0, latch_thick - 0.2]) mirror([0, 0, 1]) snap_pin(grip_latch);
+}
+
+module latches() {
+    for (cx = latch_cx) translate(tray_pos(latch_k) + [cx, D + 0.05 + latch_shoulder, latch_z]) rotate([-90, 0, 0])
+        rotate([0, 0, deploy > 0 ? 90 : 0]) latch();
+}
+
+module assembly() {
+    for (k = [0:N-1]) translate(tray_pos(k)) {
+        color(C_TRAY) tray(k);
+        if (show_dividers && NC > 1) color(C_PINK)
+            for (j = [1:NC-1]) translate([wall + j*comp_w - divider_t/2, wall + 0.3, floor_t])
+                rotate([90, 0, 90]) divider();
+    }
+    color(C_YEL) for (c = [1:N], side = [0, 1]) bar_placed(c, side);
+    if (show_pins) color(C_YEL) all_pins();
+    translate(tray_pos(N-1)) {
+        color(C_YEL) for (i = [0, 1]) leg_placed(i);
+        color(C_YEL) translate([0, hp_y, hp_z]) rotate([-HA, 0, 0]) handle();
+        if (show_pegboard && deploy > 0) translate([W/2, D + clr, th - sd + 0.1]) pegboard_with_hooks();
+    }
+    color(C_TRAY) latches();
+    if (show_pegboard && deploy == 0) translate([W/2, -g_stand - tp, 2.1]) pegboard_with_hooks();
+}
+
+// =====================================================================
+//  PRINT LAYOUTS
+// =====================================================================
+module pin_flat(grip) { translate([0, 0, (pin_d - 0.6)/2]) rotate([90, 0, 0]) snap_pin(grip); }
+module pins_plate() {
+    n = n_bar_pins + 2;          // bar pivots + handle pivots
+    for (i = [0:n-1]) translate([(i % 10)*13, floor(i/10)*24, 0]) pin_flat(grip_bar);
+    y1 = (floor((n-1)/10) + 1)*24 + 6;
+    for (i = [0:3]) translate([i*13, y1, 0]) pin_flat(grip_leg);
+    for (i = [0:1]) translate([60 + i*13, y1, 0]) pin_flat(grip_latch);
+}
+
+if (part == "assembly")          assembly();
+else if (part == "tray")         tray(tray_index);
+else if (part == "divider")      divider();
+else if (part == "bar_2")        bar(2);
+else if (part == "bar_3")        bar(3);
+else if (part == "pin_bar")      pin_flat(grip_bar);
+else if (part == "pin_leg")      pin_flat(grip_leg);
+else if (part == "pin_latch")    pin_flat(grip_latch);
+else if (part == "latch")        translate([0, 0, latch_thick]) mirror([0, 0, 1]) latch();   // outer face down
+else if (part == "leg")          leg();
+else if (part == "handle")       translate([0, 0, handle_arm_width/2]) rotate([90, 0, 0]) handle();
+else if (part == "handle_left")  translate([0, 0, handle_arm_width/2]) rotate([90, 0, 0]) handle_half(0);
+else if (part == "handle_right") translate([0, 0, handle_arm_width/2]) rotate([-90, 0, 0]) handle_half(1);
+else if (part == "pegboard")     translate([0, 0, tp]) rotate([-90, 0, 0]) pegboard();
+else if (part == "hook")         hook();
+else if (part == "pins_plate")   pins_plate();
+</script>
+<script type="text/plain" id="src-readme"># Collapsible Tiered Display Stand (parametric)
+
+This is a parametric version of the folding display stand in the reel (instagram.com/reels/DeTY9OCy5v0). It has two modes:
+- **Carry box:** the four trays stack straight up, the pegboard covers the front, and you carry it by the handle.
+- **Display:** the trays step back into a four-tier staircase, and the pegboard stands up behind the top tier.
+
+Main file: `collapsible_stand.scad` (OpenSCAD 2021 or newer). Open it and go to **Window → Customizer**. Everything is driven by the front panel size: set `panel_width` and `panel_height` (each 120–250 mm) and the trays, linkage, legs, handle and hooks all follow.
+
+## How it works
+**Side linkage.** Each tray has up to three pivots per side, at a front, middle and back position (F/M/B), all at the same height.
+- Every pair of neighbouring trays is joined on each side by two parallel bars: upper F to lower M, and upper M to lower B.
+- Bars that line up are merged into one longer bar. Each side ends up with two 2-hole bars and two 3-hole bars, the same pattern as the original.
+- The trays always stay level.
+- **Collapsed:** the bars lean forward and the trays stack straight up.
+- **Deployed:** the bars lean back by the same angle, and each tier steps back by twice the pivot spacing.
+- The tier height is the same in both states. Halfway through the fold the trays lift slightly apart (over-centre), so both states hold by themselves.
+
+**Trays.** All four trays have the same shape: side walls that are full height almost to the front, with a short chamfer at the front corner, and a lower front lip with 7 scallops. The dividers copy the side wall's outline at a smaller size: a flat top from the back, then a diagonal down to the front, with the kink in the same place as on the walls. `divider_height` sets how tall they are (default 0.6 = 60 % of the tray height).
+
+**Compression lock pins.** Every pivot and fixing uses the same kind of pin: two prongs split by a 2 mm slot, ending in an arrowhead barb. Push the pin through the bar (or handle arm) and the wall from outside; the prongs squeeze together to pass the 5.2 mm hole, then spring open once the 6.2 mm barb shoulder is past the wall, locking the pin in. The split runs from just under the head to the tip, so the prongs are long and bend gently (about 2 % strain), and they don't crack. To remove one, pinch the two prongs together from inside the tray and push the pin out.
+
+**Rear legs.** Two wide panels slide up into a slot behind the top tray. Each is held by two compression pins.
+- The legs stand on the table in both states and stop the fold.
+- When collapsed, a turn latch on the second tray pokes through a window in each leg. Turn it 90° to lock the stack before carrying.
+
+**Handle.** It pivots in the middle of the top tray, close to the centre of mass, so the box hangs level when you carry it. The arms sit straight on the top tray's side walls (on a 1 mm washer ring, like the side bars) and use the same pins as the bars. Flip it back and it rests on the leg pins behind the top tray. On very short stands (panel height under about 140 mm) it stops earlier, leaning back against the ends of the side bars.
+
+**Pegboard.**
+- **Box mode:** the panel's side edges slide down into four corner hooks on the front corners of the bottom two trays. Each hook grows forward out of the tray's side wall and wraps around the panel edge from the side. The bottom tray's hooks have a floor that the panel stands on.
+- **Display mode:** the panel drops 22 mm into the slot behind the top tray.
+- Hooks fit into pairs of slots: 5 columns × 2 groups, spread over the face at about 40 % and 78 % of the panel height.
+
+## Key parameters
+| Parameter | Default | Meaning |
+|---|---|---|
+| `panel_width` | 194.2 | front panel width, 120–250 mm; the trays are 5.8 mm wider |
+| `panel_height` | 213 | front panel height, 120–250 mm; sets the tier height (panel = tiers × tier height − 3) |
+| `depth_ratio` | 0.5 | tray depth as a fraction of tray width (the top tray is 8 mm deeper because of the slot) |
+| `num_trays` | 4 | 2–6 tiers |
+| `num_compartments` | 4 | compartments per tray (dividers = compartments − 1) |
+| `pin_spacing` | 0.30 | F/M/B pivot spacing as a fraction of depth; each tier steps back 2× this when deployed |
+| `lip_scallops`, `front_height` | 7, 0.42 | front lip scallops and their height |
+| `side_front_height`, `side_full_at` | 0.6, 0.22 | side walls: height at the front corner, and where they reach full height |
+| `divider_height` | 0.6 | divider height as a fraction of the tray height, 0.3–1 (a slider in the Customizer). The outline follows the side walls |
+| `pegboard_scallops`, `hook_cols`, `hook_groups` | 7, 5, [0.40, 0.78] | pegboard look and hook layout |
+| `clip_width`, `clip_height` | 17, 25 | corner hooks that hold the panel |
+| `latch_tray`, `latch_height` | 1, 0.40 | which tray carries the turn latches, and how high |
+| `handle_position` | 0.5 | handle pivot along the top tray (fraction of depth); 0.5 hangs level |
+| `clr`, `pin_d` | 0.3, 5 | fit; tune these to your printer |
+| `deploy` | 0 … 1 | preview or animate the fold |
+
+If you choose a size combination that can't work, the file stops with a message saying what to change. The console also shows the overall dimensions and a parts list.
+
+At the default size:
+- Collapsed: 212 × 120 × 215 mm, plus the handle.
+- Deployed: 300 mm deep and 406 mm tall at the top of the pegboard.
+- Every part fits a 220 × 220 bed, including the one-piece handle (212 mm). The split handle halves are there for smaller beds.
+
+## Exporting
+- In the Customizer, set `part` (and `tray_index` for trays), then press F6 and F7.
+- Or run `./export_stls.sh` in Git Bash. You can pass overrides, e.g. `./export_stls.sh -D panel_width=180 -D panel_height=200`.
+- `stl/` already contains the default-size parts.
+
+## Parts (default, 4 tiers)
+| File | Qty | Notes |
+|---|---|---|
+| `tray_0` … `tray_3` | 1 each | every tray is different. 0 = bottom (corner hooks with floors); 1 = corner hooks + latch pivots; 3 = top (leg/pegboard slot, handle pivots) |
+| `divider` | 12 | 3 per tray; slide between the ribs. Same outline as the side walls, 60 % of the tray height |
+| `bar_3` | 4 | 3-hole side bars |
+| `bar_2` | 4 | 2-hole side bars |
+| `pin_bar` | 22 | compression pins: 20 for the side bars, 2 for the handle |
+| `pin_leg` | 4 | longer compression pins for the legs |
+| `latch` + `pin_latch` | 2 + 2 | |
+| `leg` | 2 | |
+| `handle` (or `handle_left` + `handle_right`) | 1 | one piece fits a 220 mm bed; the halves glue at the lap joint with two 1.75 mm filament dowels |
+| `pegboard` | 1 | |
+| `hook` | 10 | |
+| `pins_plate` | – | all 28 pins on one plate |
+
+**Printing.**
+- PLA or PETG, 0.2 mm layers, 3 walls, 15–20 % infill. No supports needed.
+- Trays print floor-down; everything else prints flat as exported.
+- Pins print lying on their flat side. Use 100 % infill for the pins, and PETG is best for them.
+
+## Assembly
+1. Slide the dividers in between the ribs.
+2. Stack the trays. On each side, fit the bars that match the hole pattern: the long bars go top-F → next-M → next-B, and the short ones go top-M → next-B and so on. Push a compression pin through each bar hole into the wall until it clicks.
+3. Fit the handle to the top tray with two `pin_bar` pins.
+4. Slide the legs up into the slot behind the top tray and pin them through the back.
+5. Fit the latches through the leg windows into the second tray's back wall.
+6. Slide the pegboard down into the corner hooks on the front.
+
+**To deploy:**
+1. Turn both latches vertical.
+2. Lift the pegboard out and drop it into the slot behind the top tray.
+3. Pull the top tray up and back until the stair settles.
+4. Flip the handle back until it rests behind the top tray.
+
+Reverse these steps to fold it up.
+
+Print one bar, two `pin_bar` and the first tray before the rest. Check that the pin clicks in firmly and the bar turns freely. If not, adjust `pin_d`, or the `+0.2` / `+0.4` hole allowances in the file.
+</script>
+<script type="text/plain" id="src-export">#!/bin/sh
+# Exports every printable part to ./stl
+# Extra -D overrides are passed through, e.g.:
+#   ./export_stls.sh -D panel_width=180 -D panel_height=200
+OS="${OPENSCAD:-/c/Program Files/OpenSCAD/openscad.com}"
+cd "$(dirname "$0")" || exit 1
+mkdir -p stl
+TMP="stl/.params.echo"
+"$OS" -o "$TMP" -D 'part="none"' "$@" collapsible_stand.scad || exit 1
+N=$(grep -o 'num_trays_used = [0-9]*' "$TMP" | grep -o '[0-9]*$')
+grep -o 'BOM: [^"]*' "$TMP"
+rm -f "$TMP" stl/*.stl
+for i in $(seq 0 $((${N:-4} - 1))); do
+  "$OS" -o "stl/tray_$i.stl" -D 'part="tray"' -D "tray_index=$i" "$@" collapsible_stand.scad
+done
+for p in divider bar_2 bar_3 pin_bar pin_leg pin_latch latch leg handle handle_left handle_right pegboard hook pins_plate; do
+  "$OS" -o "stl/$p.stl" -D "part=\"$p\"" "$@" collapsible_stand.scad
+done
+</script>
+<script>
+/* Collapsible Display Stand - shared geometry.
+   Same rules and dimensions as collapsible_stand.scad. Used by the 3D view
+   and by the in-browser STL export. Axes follow OpenSCAD: x right, y back, z up, mm. */
+(function (root) {
+  'use strict';
+
+    /* ------------------------------------------------------------------ parameters */
+  function computeParams(pw, ph, dh) {
+    var N = 4, NC = 4, divider_h = dh == null ? 0.6 : dh;   // divider height, fraction of the tray height
+    var wall = 2.4, floor_t = 2.4, tray_gap = 1, clr = 0.3, divider_t = 2, pin_d = 5, washer_t = 1;
+    var W = pw + 2 * wall + 1;
+    var H = (ph + 3) / N;
+    var D = 0.5 * W;
+    var th = H - tray_gap;
+    var W_in = W - 2 * wall, comp_w = W_in / NC;
+    var hS = 0.42 * th, hC = 0.24 * th;   // front lip: scallop tops and cusps
+    var hT = 0.6 * th, yT = 0.22 * D;     // side walls: height at the front corner, full height from yT back
+    function sideH(y) { return y >= yT ? th : hT + y / yT * (th - hT); }
+    var delta = 0.30 * D, yF = 0.30 * D;
+    function pinY(p) { return yF + p * delta; }
+    var washer_r = (pin_d + 4.5) / 2;
+    var pz = Math.max(washer_r + 1, Math.min(0.31 * th, sideH(pinY(0)) - washer_r - 1.5));
+    var L = Math.hypot(H, delta);
+    var alpha = Math.atan(delta / H);
+    var tp = 5, leg_t = tp, cg = tp + 2 * clr, D_top = D + cg + wall;
+    var sd = Math.max(12, Math.min(22, 0.42 * th)), ledge_t = 2.5, z_ledge = th - sd - ledge_t;
+    var Wp = W - 2 * wall - 1, Hp = (N - 1) * H + th - 2;
+    var ps_r = 1.03 * Wp / (2 * 7);
+    var clip_w = Math.max(17, 0.76 * ps_r + 6), clip_h = Math.min(25, 0.8 * th), clip_front = 2.5;
+    var slot_pitch = 23, slot_w = 5.6, slot_h = 12;
+    var g_hi = Math.min(0.78 * Hp, Hp - 1.76 * ps_r - slot_pitch / 2 - slot_h / 2 - 3);
+    var g_lo = Math.min(0.40 * Hp, g_hi - (slot_pitch + slot_h + 4));
+    var slot_groups = g_lo >= Math.max(slot_pitch / 2 + slot_h / 2 + 3, sd + slot_pitch / 2 + 7.5) ? [g_lo, g_hi] : [g_hi];   // short panels get one row of hooks
+    var hook_cols = 5, slot_col_x = [];
+    for (var i = 0; i < hook_cols; i++) slot_col_x.push((i - (hook_cols - 1) / 2) * 0.635 * Wp / (hook_cols - 1));
+    var g_stand = 4.5, bar_w = 11, bar_t = 5;
+    var ha_x = washer_t + 0.1;   // handle arms sit straight on the side wall (on a washer, like the bars)
+    var hp_y = 0.5 * D, hp_z = th - 9;   // handle pivot near the centre of mass
+    var grip_d = 16, arm_w = 14, arm_t = 5;
+    var reach = Math.max(55, Math.hypot(D_top - hp_y, th - hp_z) + grip_d / 2 + 4);
+    // folded back, the grip swings down behind the top tray until it first touches
+    // the leg pin heads, the outer back wall or the legs
+    function dRect(py, pz, y0, y1, z0, z1) { var dy = Math.max(y0 - py, 0, py - y1), dz = Math.max(z0 - pz, 0, pz - z1); return Math.sqrt(dy * dy + dz * dz); }
+    function gripHits(a) {
+      var rad = a * Math.PI / 180, gy = hp_y + reach * Math.sin(rad), gz = hp_z + reach * Math.cos(rad), r = grip_d / 2 + 0.5;
+      return dRect(gy, gz, -1e4, D_top, 0, th) < r ||
+        dRect(gy, gz, -1e4, D_top + 0.2 + 2, z_ledge / 2 - (pin_d + 5) / 2, z_ledge / 2 + (pin_d + 5) / 2) < r ||
+        dRect(gy, gz, -1e4, D + clr + leg_t, -1e4, 0) < r;
+    }
+    // the arms sit in the same layer as the side bars: they must not swing into the bar ends on the top tray
+    function segDist(px, pzz, ax, az, bx, bz) {
+      var abx = bx - ax, abz = bz - az, t = Math.max(0, Math.min(1, ((px - ax) * abx + (pzz - az) * abz) / (abx * abx + abz * abz)));
+      return Math.hypot(px - (ax + t * abx), pzz - (az + t * abz));
+    }
+    function armHits(a) {
+      var rad = a * Math.PI / 180, gy = hp_y + reach * Math.sin(rad), gz = hp_z + reach * Math.cos(rad), d = Infinity;
+      for (var q = 0; q < 3; q++) if ((N - 1) + q >= 1 && (N - 1) + q <= N) d = Math.min(d, segDist(pinY(q), pz, hp_y, hp_z, gy, gz));
+      return d < arm_w / 2 + bar_w / 2 + 0.5;
+    }
+    var handle_rest = 180;
+    for (var ai = 0; ai <= 720; ai++) { if (gripHits(ai * 0.25) || armHits(ai * 0.25)) { handle_rest = ai * 0.25 - 0.25; break; } }
+    var lw = 0.40 * W;
+    var leg_x0 = [wall + 1, W - wall - 1 - lw];
+    var leg_cx = [leg_x0[0] + lw / 2, leg_x0[1] + lw / 2];
+    var leg_len = (N - 1) * H + z_ledge - 0.1;
+    var leg_pin_z = z_ledge / 2, leg_pin_dx = 0.3 * lw;
+    var latch_k = Math.min(1, N - 2);
+    var latch_shoulder = clr + leg_t + 0.6, latch_hub = pin_d + 9, latch_width = 10, latch_thick = 5;
+    var win_w = Math.max(0.28 * lw, latch_hub + 3), win_rise = 7;
+    var latch_len = Math.max(40, win_w + 14);
+    var latch_z = Math.max(6, Math.min(0.40 * th, H - 1.5 - latch_len / 2));
+    var latch_abs = latch_k * H + latch_z;
+    var latch_cx = [Math.min(leg_cx[0], wall + comp_w - 6.05), Math.max(leg_cx[1], W - wall - comp_w + 6.05)];
+    var win_dx = latch_cx[0] - leg_cx[0];
+    var win_lo = latch_abs - latch_len / 2 - 1.5 - win_rise, win_hi = latch_abs + latch_len / 2 + 1.5;
+    var pin_head_d = pin_d + 5, pin_head_t = 2;
+    var bars = [];
+    for (var c = 1; c <= N; c++) { var lo = Math.max(0, c - 2), hi = Math.min(N - 1, c); bars.push({ c: c, lo: lo, hi: hi, n: hi - lo + 1 }); }
+    function hasPin(k, p) { return k + p >= 1 && k + p <= N; }
+    var n_bar_pins = 0;
+    for (var k = 0; k < N; k++) for (var p = 0; p < 3; p++) if (hasPin(k, p)) n_bar_pins += 2;
+    return {
+      pw: pw, ph: ph, N: N, NC: NC, wall: wall, floor_t: floor_t, clr: clr, divider_t: divider_t, pin_d: pin_d, washer_t: washer_t,
+      W: W, H: H, D: D, th: th, comp_w: comp_w, hS: hS, hC: hC, hT: hT, yT: yT, sideH: sideH, delta: delta, pinY: pinY, washer_r: washer_r,
+      pz: pz, L: L, alpha: alpha, tp: tp, leg_t: leg_t, cg: cg, D_top: D_top, sd: sd, ledge_t: ledge_t, z_ledge: z_ledge,
+      Wp: Wp, Hp: Hp, ps_r: ps_r, clip_w: clip_w, clip_h: clip_h, clip_front: clip_front, slot_pitch: slot_pitch,
+      slot_w: slot_w, slot_h: slot_h, slot_groups: slot_groups, slot_col_x: slot_col_x, g_stand: g_stand, bar_w: bar_w,
+      bar_t: bar_t, ha_x: ha_x, hp_y: hp_y, hp_z: hp_z, grip_d: grip_d, arm_w: arm_w, arm_t: arm_t, reach: reach,
+      handle_rest: handle_rest, lw: lw, leg_x0: leg_x0, leg_cx: leg_cx, leg_len: leg_len, leg_pin_z: leg_pin_z,
+      leg_pin_dx: leg_pin_dx, latch_k: latch_k, latch_shoulder: latch_shoulder, latch_hub: latch_hub,
+      latch_width: latch_width, latch_thick: latch_thick, latch_len: latch_len, latch_z: latch_z, latch_cx: latch_cx,
+      win_dx: win_dx, win_w: win_w, win_lo: win_lo, win_hi: win_hi, pin_head_d: pin_head_d, pin_head_t: pin_head_t,
+      hasPin: hasPin, bars: bars, n_bar_pins: n_bar_pins,
+      hook_t: 5, hook_len: 55, hook_rise: 12, hook_tip: 12,
+      grip_bar: washer_t + wall + bar_t + 0.3,
+      grip_leg: wall + cg + wall + 0.2,
+      grip_handle: arm_t + ha_x + wall + 0.2,   // same as grip_bar
+      divider_h: divider_h, lip_scallops: 7,
+      pin_barb_len: 3.5, pin_barb_d: pin_d + 1.2, pin_tip_d: pin_d - 0.8, pin_slot_w: 2, pin_slot_root: 1,
+      grip_latch: (latch_thick - pin_head_t - 0.2) + latch_shoulder + wall + 0.2
+    };
+  }
+
+
+  function make(T) {
+    var PI = Math.PI;
+
+    /* ------------------------------------------------------------------ 2D helpers */
+    function circlePath(cx, cy, r) { var p = new T.Path(); p.absarc(cx, cy, r, 0, PI * 2, true); return p; }
+    function polyPath(pts) { var p = new T.Path(); pts.forEach(function (q, i) { if (i) p.lineTo(q[0], q[1]); else p.moveTo(q[0], q[1]); }); p.closePath(); return p; }
+    function polyShape(pts) { var s = new T.Shape(); pts.forEach(function (q, i) { if (i) s.lineTo(q[0], q[1]); else s.moveTo(q[0], q[1]); }); s.closePath(); return s; }
+    function circlePoly(cx, cy, r, n) { var out = []; for (var i = 0; i < n; i++) { var a = 2 * PI * i / n; out.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]); } return out; }
+    // keep the side of the line where nx*x + ny*y >= c
+    function clipPoly(pts, nx, ny, c) {
+      var out = [];
+      for (var i = 0; i < pts.length; i++) {
+        var a = pts[i], b = pts[(i + 1) % pts.length];
+        var da = nx * a[0] + ny * a[1] - c, db = nx * b[0] + ny * b[1] - c;
+        if (da >= 0) out.push(a);
+        if ((da >= 0) !== (db >= 0)) { var t = da / (da - db); out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]); }
+      }
+      return out;
+    }
+    function roundedRectPath(cx, cy, w, h, r) {
+      var p = new T.Path(), x0 = cx - w / 2, y0 = cy - h / 2, x1 = cx + w / 2, y1 = cy + h / 2;
+      p.moveTo(x0 + r, y0); p.lineTo(x1 - r, y0); p.absarc(x1 - r, y0 + r, r, -PI / 2, 0, false);
+      p.lineTo(x1, y1 - r); p.absarc(x1 - r, y1 - r, r, 0, PI / 2, false);
+      p.lineTo(x0 + r, y1); p.absarc(x0 + r, y1 - r, r, PI / 2, PI, false);
+      p.lineTo(x0, y0 + r); p.absarc(x0 + r, y0 + r, r, PI, 1.5 * PI, false);
+      return p;
+    }
+    // polygon with optional rounded convex corners
+    function roundedShape(pts, radii) {
+      var s = new T.Shape(), n = pts.length;
+      for (var i = 0; i < n; i++) {
+        var p = pts[i], a = pts[(i - 1 + n) % n], b = pts[(i + 1) % n], r = radii[i] || 0;
+        if (!r) { if (i === 0) s.moveTo(p[0], p[1]); else s.lineTo(p[0], p[1]); continue; }
+        var da = Math.hypot(a[0] - p[0], a[1] - p[1]), db = Math.hypot(b[0] - p[0], b[1] - p[1]);
+        var ra = Math.min(r, da / 2), rb = Math.min(r, db / 2);
+        var p1 = [p[0] + (a[0] - p[0]) / da * ra, p[1] + (a[1] - p[1]) / da * ra];
+        var p2 = [p[0] + (b[0] - p[0]) / db * rb, p[1] + (b[1] - p[1]) / db * rb];
+        if (i === 0) s.moveTo(p1[0], p1[1]); else s.lineTo(p1[0], p1[1]);
+        s.quadraticCurveTo(p[0], p[1], p2[0], p2[1]);
+      }
+      s.closePath();
+      return s;
+    }
+    function addHoles(s, holes) { (holes || []).forEach(function (h) { s.holes.push(circlePath(h[0], h[1], h[2])); }); return s; }
+    function rectShape(x0, y0, w, h, holes) { return addHoles(polyShape([[x0, y0], [x0 + w, y0], [x0 + w, y0 + h], [x0, y0 + h]]), holes); }
+    function ringShape(cx, cy, r, rh) { var s = new T.Shape(); s.absarc(cx, cy, r, 0, PI * 2, false); s.holes.push(circlePath(cx, cy, rh)); return s; }
+    function stadiumShape(len, r) {   // from (0,0) to (len,0)
+      var s = new T.Shape();
+      s.moveTo(0, -r); s.lineTo(len, -r); s.absarc(len, 0, r, -PI / 2, PI / 2, false);
+      s.lineTo(0, r); s.absarc(0, 0, r, PI / 2, 1.5 * PI, false);
+      return s;
+    }
+
+    /* ------------------------------------------------------------------ part outlines */
+    // side wall: full height almost to the front, with a short chamfer at the front corner
+    function sideProfile(P, Dk, holes) {
+      return addHoles(roundedShape([[0, 0], [Dk, 0], [Dk, P.th], [P.yT, P.th], [0, P.hT]], [0, 0, 3, 3, 3]), holes);
+    }
+    function lipShape(P) {
+      var n = P.lip_scallops, c = P.W / n, sg = P.hS - P.hC, R = (c * c / 4 + sg * sg) / (2 * sg);
+      var aR = Math.atan2(P.hC - (P.hS - R), c / 2);
+      var s = new T.Shape();
+      s.moveTo(0, 0); s.lineTo(P.W, 0); s.lineTo(P.W, P.hC);
+      for (var i = n - 1; i >= 0; i--) s.absarc(c * (i + 0.5), P.hS - R, R, aR, PI - aR, false);
+      s.closePath();
+      return s;
+    }
+    // the side wall's outline scaled down to divider_h: a flat top from the back, then a diagonal
+    // down to the front, kinked at the same place as the walls
+    function dividerTop(P, y) { return P.divider_h * P.sideH(y); }   // height above the tray bottom at depth y
+    function dividerShape(P) {
+      var y0 = P.wall + 0.3, L = P.D - 2 * P.wall - 0.6;
+      var hb = dividerTop(P, P.yT) - P.floor_t, hf = dividerTop(P, y0) - P.floor_t, rr = Math.min(3, hf / 2 - 0.05);
+      return roundedShape([[0, 0], [L, 0], [L, hb], [P.yT - y0, hb], [0, hf]], [0, 0, rr, rr, rr]);
+    }
+    function barShape(P, n) {
+      var s = stadiumShape((n - 1) * P.L, P.bar_w / 2);
+      for (var i = 0; i < n; i++) s.holes.push(circlePath(i * P.L, 0, (P.pin_d + 0.4) / 2));
+      return s;
+    }
+    function legShape(P, sign) {   // sign -1 = the same leg turned over
+      var s = roundedShape([[0, 0], [P.lw, 0], [P.lw, P.leg_len], [0, P.leg_len]], [4, 4, 4, 4]);
+      s.holes.push(roundedRectPath(P.lw / 2 + sign * P.win_dx, (P.win_lo + P.win_hi) / 2, P.win_w, P.win_hi - P.win_lo, 3));
+      var zp = P.leg_len - (P.z_ledge - 0.1) + P.leg_pin_z;
+      [-P.leg_pin_dx, P.leg_pin_dx].forEach(function (dx) { s.holes.push(circlePath(P.lw / 2 + dx, zp, (P.pin_d + 0.4) / 2)); });
+      return s;
+    }
+    function pegboardShape(P) {
+      var r = P.ps_r, nt = 7, Wp = P.Wp, Hp = P.Hp;
+      var pt = (Wp - 2 * r) / (nt - 1);
+      var ns = Math.max(1, Math.round((Hp - 2 * r) / (1.94 * r)));
+      var pside = (Hp - 2 * r) / ns, xr = Wp / 2 - r, C = [], i, j;
+      for (j = 0; j <= ns; j++) C.push([xr, r + j * pside]);
+      for (i = nt - 2; i >= 1; i--) C.push([-Wp / 2 + r + i * pt, Hp - r]);
+      for (j = ns; j >= 0; j--) C.push([-xr, r + j * pside]);
+      function inter(A, B) {
+        var dx = B[0] - A[0], dy = B[1] - A[1], d = Math.hypot(dx, dy), h = Math.sqrt(Math.max(0, r * r - d * d / 4));
+        return [(A[0] + B[0]) / 2 + h * dy / d, (A[1] + B[1]) / 2 - h * dx / d];
+      }
+      function ang(c, q) { return Math.atan2(q[1] - c[1], q[0] - c[0]); }
+      var s = new T.Shape();
+      s.moveTo(-Wp / 2, 0); s.lineTo(Wp / 2, 0); s.lineTo(Wp / 2, r);
+      for (var k = 0; k < C.length; k++) {
+        var a0 = k === 0 ? 0 : ang(C[k], inter(C[k - 1], C[k]));
+        var a1 = k === C.length - 1 ? PI : ang(C[k], inter(C[k], C[k + 1]));
+        while (a1 < a0) a1 += PI * 2;
+        s.absarc(C[k][0], C[k][1], r, a0, a1, false);
+      }
+      s.closePath();
+      P.slot_col_x.forEach(function (x) {
+        P.slot_groups.forEach(function (gz) {
+          [-1, 1].forEach(function (sg) { s.holes.push(roundedRectPath(x, gz + sg * P.slot_pitch / 2, P.slot_w, P.slot_h, 1)); });
+        });
+      });
+      return s;
+    }
+    // hook profile: u = out from the board front face, v = up (v = 0 at the upper slot).
+    // mirror = true flips u, as the hook sits on the board.
+    function hookShape(P, mirror) {
+      var sp = P.slot_pitch, hl = P.hook_len, t = Math.tan(P.hook_rise * PI / 180), vt = 4, ab = vt - 6, tip = P.hook_tip, tp = P.tp;
+      var pts = [[0, -sp - 6], [5, -sp - 6], [5, ab + 5 * t], [hl, ab + hl * t], [hl, vt + hl * t + tip], [hl - 5, vt + hl * t + tip],
+        [hl - 5, vt + (hl - 5) * t], [0, vt], [0, 3.5], [-tp - 3, 3.5], [-tp - 3, -8.5], [-tp - 0.6, -8.5], [-tp - 0.6, -3.5],
+        [0, -3.5], [0, -sp + 3.5], [-tp - 0.8, -sp + 3.5], [-tp - 0.8, -sp - 3.5], [0, -sp - 3.5]];
+      return polyShape(pts.map(function (q) { return [mirror ? -q[0] : q[0], q[1]]; }));
+    }
+
+    /* ------------------------------------------------------------------ 3D helpers */
+    var MAT_YZ = new T.Matrix4().set(0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1);   // (u,v) -> (y,z), extrude along +x
+    var MAT_XZ = new T.Matrix4().set(1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1);  // (u,v) -> (x,z), extrude along -y
+    function extrude(shape, depth, segs) { return new T.ExtrudeGeometry(shape, { depth: depth, bevelEnabled: false, curveSegments: segs || 16 }); }
+    function zExt(shape, z0, z1, segs) { var g = extrude(shape, z1 - z0, segs); g.translate(0, 0, z0); return g; }
+    function prismYZ(shape, t, x0, segs) { var g = extrude(shape, t, segs); g.applyMatrix4(MAT_YZ); g.translate(x0, 0, 0); return g; }   // x in [x0, x0+t]
+    function prismXZ(shape, t, y0, segs) { var g = extrude(shape, t, segs); g.applyMatrix4(MAT_XZ); g.translate(0, y0 + t, 0); return g; }   // y in [y0, y0+t]
+    function box(x0, y0, z0, sx, sy, sz) { var g = new T.BoxGeometry(sx, sy, sz); g.translate(x0 + sx / 2, y0 + sy / 2, z0 + sz / 2); return g; }
+    function cylX(r, x0, len, y, z, segs) { var g = new T.CylinderGeometry(r, r, len, segs || 24); g.rotateZ(-PI / 2); g.translate(x0 + len / 2, y, z); return g; }
+    function cylY(r, y0, len, x, z, segs) { var g = new T.CylinderGeometry(r, r, len, segs || 24); g.translate(x, y0 + len / 2, z); return g; }
+    function cylZ(r, z0, len, x, y, segs) { var g = new T.CylinderGeometry(r, r, len, segs || 24); g.rotateX(PI / 2); g.translate(x, y, z0 + len / 2); return g; }
+    function transformAll(list, m) { list.forEach(function (g) { g.applyMatrix4(m); }); return list; }
+
+    /* ------------------------------------------------------------------ printable parts */
+    // corner hook that holds the pegboard (dirn +1 = left front corner, -1 = right)
+    function panelHookGeoms(P, withFloor, dirn) {
+      var cw = P.clip_w, ch = P.clip_h, rc = cw - 1.5;
+      var ys0 = -P.g_stand - P.tp - P.clr, ys1 = -P.g_stand + P.clr, y0 = ys0 - P.clip_front;
+      var xo = dirn > 0 ? 0 : P.W, xi = xo + dirn * cw;
+      var s = new T.Shape();
+      s.moveTo(xo, 0); s.lineTo(xi, 0); s.lineTo(xi, ch - rc);
+      if (dirn > 0) s.absarc(xi - rc, ch - rc, rc, 0, PI / 2, false); else s.absarc(xi + rc, ch - rc, rc, PI, PI / 2, true);
+      s.lineTo(xo, ch);
+      s.closePath();
+      var out = [prismXZ(s, P.clip_front, y0, 18), prismXZ(s, -ys1 + P.wall, ys1, 18)];
+      out.push(box(dirn > 0 ? 0 : P.W - 2, y0 + 0.1, 0, 2, ys1 - y0 + 0.1, ch));
+      if (withFloor) out.push(box(dirn > 0 ? 1.9 : P.W - cw, ys0 - 0.1, 0, cw - 1.9, ys1 - ys0 + 0.2, 2));
+      return out;
+    }
+
+    function trayGeoms(P, k) {
+      var top = k === P.N - 1, Dk = top ? P.D_top : P.D, W = P.W, D = P.D, th = P.th, wall = P.wall, ft = P.floor_t;
+      var rh = (P.pin_d + 0.2) / 2, g = [], p;
+      g.push(box(0, 0, 0, W, D, ft));
+      var backHoles = [], legHoles = [];
+      if (top) P.leg_cx.forEach(function (cx) { [-P.leg_pin_dx, P.leg_pin_dx].forEach(function (dx) { legHoles.push([cx + dx, P.leg_pin_z, rh]); }); });
+      if (k === P.latch_k) P.latch_cx.forEach(function (cx) { backHoles.push([cx, P.latch_z, rh]); });
+      g.push(prismXZ(rectShape(0, 0, W, th, backHoles.concat(legHoles)), wall, D - wall, 24));
+      var sideHoles = [];
+      for (p = 0; p < 3; p++) if (P.hasPin(k, p)) sideHoles.push([P.pinY(p), P.pz, rh]);
+      if (top) sideHoles.push([P.hp_y, P.hp_z, rh]);
+      var sp = sideProfile(P, Dk, sideHoles);
+      g.push(prismYZ(sp, wall, 0, 12), prismYZ(sp, wall, W - wall, 12));
+      g.push(prismXZ(lipShape(P), wall, 0, 40));
+      for (var j = 1; j < P.NC; j++) {
+        var xj = wall + j * P.comp_w;
+        [-1, 1].forEach(function (s) {
+          var rx = xj + s * (P.divider_t / 2 + P.clr / 2) + (s < 0 ? -1.2 : 0);
+          g.push(box(rx, D - wall - 1.6, ft - 0.2, 1.2, 1.8, Math.min(P.divider_h * th + 1, th) - ft + 0.2));
+          g.push(box(rx, wall - 0.2, ft - 0.2, 1.2, 1.8, Math.min(P.hC, dividerTop(P, wall + 0.3)) - ft + 0.2));
+        });
+      }
+      var washers = [];
+      for (p = 0; p < 3; p++) if (P.hasPin(k, p)) washers.push([P.pinY(p), P.pz]);
+      if (top) washers.push([P.hp_y, P.hp_z]);   // under the handle arms
+      washers.forEach(function (q) {
+        var ring = ringShape(q[0], q[1], P.washer_r, rh);
+        g.push(prismYZ(ring, P.washer_t + 0.3, -P.washer_t, 32), prismYZ(ring, P.washer_t + 0.3, W - 0.3, 32));
+      });
+      if (k <= 1) panelHookGeoms(P, k === 0, 1).concat(panelHookGeoms(P, k === 0, -1)).forEach(function (q) { g.push(q); });
+      if (top) {
+        g.push(prismXZ(rectShape(0, 0, W, th, legHoles), wall, D + P.cg, 24));
+        g.push(box(wall - 0.2, D - 0.2, P.z_ledge, W - 2 * wall + 0.4, P.cg + 0.4, P.ledge_t));
+      }
+      return g;
+    }
+
+    // handle in pivot coordinates: pivot on the x axis at the origin, arms along +z
+    function handleGeoms(P, variant) {
+      var aw = P.arm_w, R = P.reach, rh = (P.pin_d + 0.4) / 2;
+      var arm = new T.Shape();
+      arm.moveTo(aw / 2, 0); arm.lineTo(aw / 2, R); arm.absarc(0, R, aw / 2, 0, PI, false);
+      arm.lineTo(-aw / 2, 0); arm.absarc(0, 0, aw / 2, PI, 2 * PI, false);
+      arm.holes.push(circlePath(0, 0, rh));
+      var x0 = -P.ha_x - P.arm_t, x1 = P.W + P.ha_x + P.arm_t, c = P.W / 2, lap = 20;
+      var full = clipPoly(clipPoly(circlePoly(0, R, P.grip_d / 2, 64), 1, 0, -aw / 2), -1, 0, -aw / 2);
+      function grip(pts, xa, xb) { return prismYZ(polyShape(pts), xb - xa, xa, 1); }
+      var g = [];
+      if (variant !== 'right') g.push(prismYZ(arm, P.arm_t, x0, 20));
+      if (variant !== 'left') g.push(prismYZ(arm, P.arm_t, P.W + P.ha_x, 20));
+      if (variant === 'full') g.push(grip(full, x0, x1));
+      if (variant === 'left') g.push(grip(full, x0, c - lap), grip(clipPoly(full, -1, 0, 0), c - lap - 0.2, c + lap));
+      if (variant === 'right') g.push(grip(full, c + lap, x1), grip(clipPoly(full, 1, 0, 0), c - lap, c + lap + 0.2));
+      return g;
+    }
+
+    // latch knob in its own coordinates: knob z in [0, thick], outer face at z = thick, shoulder below z = 0
+    function latchGeoms(P) {
+      var r = P.latch_width / 2, half = (P.latch_len - P.latch_width) / 2, t = P.latch_thick;
+      var cb = P.pin_head_t + 0.2, rh = (P.pin_d + 0.4) / 2, rcb = (P.pin_head_d + 0.6) / 2, hub = P.latch_hub / 2;
+      // one arm of the knob, from inside the hub out to its rounded end (sg = +1 right, -1 left)
+      function arm(sg, arrows, z0, z1) {
+        var a = hub - 1, s = new T.Shape();
+        if (sg > 0) { s.moveTo(a, -r); s.lineTo(half, -r); s.absarc(half, 0, r, -PI / 2, PI / 2, false); s.lineTo(a, r); }
+        else { s.moveTo(-a, r); s.lineTo(-half, r); s.absarc(-half, 0, r, PI / 2, 1.5 * PI, false); s.lineTo(-a, -r); }
+        s.closePath();
+        if (arrows) {
+          var ax = sg * (P.latch_len / 2 - 7);
+          s.holes.push(polyPath(sg > 0 ? [[ax - 2, -3], [ax + 2, 0], [ax - 2, 3]] : [[ax + 2, -3], [ax - 2, 0], [ax + 2, 3]]));
+        }
+        return zExt(s, z0, z1, 20);
+      }
+      function layer(holeR, arrows, z0, z1) {
+        return [arm(1, arrows, z0, z1), arm(-1, arrows, z0, z1), zExt(ringShape(0, 0, hub, holeR), z0, z1, 32)];
+      }
+      return [].concat(
+        layer(rh, false, 0, t - cb),
+        layer(rcb, false, t - cb - 0.05, t - 0.6),
+        layer(rcb, true, t - 0.65, t),
+        [zExt(ringShape(0, 0, 4, rh), -P.latch_shoulder, 0.05, 32)]
+      );
+    }
+
+    // compression lock pin lying on its flat: axis along +x, flats at z = 0 and z = pin_d - 0.6.
+    // Two prongs split along y = 0 from just under the head to the tip; the arrowhead barb squeezes
+    // through the holes and its shoulder springs open behind the wall.
+    function pinGeoms(P, grip) {
+      var fw = P.pin_d - 0.6, cz = fw / 2, head = P.pin_head_t, rS = P.pin_d / 2, rH = P.pin_head_d / 2;
+      var barbL = P.pin_barb_len, rB0 = P.pin_barb_d / 2, rB1 = P.pin_tip_d / 2, slotW = P.pin_slot_w, slotL = barbL + grip - P.pin_slot_root;
+      var tot = head + grip + barbL, aSlot = tot - slotL, aBarb = head + grip;
+      function slab(pts) { return clipPoly(clipPoly(pts, 0, 1, 0), 0, -1, -fw); }
+      var g = [];
+      g.push(prismYZ(polyShape(clipPoly(circlePoly(0, cz, rH, 72), 0, 1, 0)), head, 0, 1));
+      var shaft = slab(circlePoly(0, cz, rS, 48));
+      g.push(prismYZ(polyShape(shaft), aSlot - head + 0.2, head - 0.1, 1));
+      [1, -1].forEach(function (sg) {
+        g.push(prismYZ(polyShape(clipPoly(shaft, sg, 0, slotW / 2)), aBarb - aSlot + 0.05, aSlot, 1));
+        var b0 = clipPoly(slab(circlePoly(0, cz, rB0, 48)), sg, 0, slotW / 2);
+        var b1 = clipPoly(slab(circlePoly(0, cz, rB1, 48)), sg, 0, slotW / 2);
+        var pts = b0.map(function (q) { return new T.Vector3(aBarb, q[0], q[1]); })
+          .concat(b1.map(function (q) { return new T.Vector3(tot, q[0], q[1]); }));
+        g.push(new T.ConvexGeometry(pts));
+      });
+      return g;
+    }
+
+    // every printable part, laid out for printing
+    function printParts(P) {
+      var parts = [], k;
+      for (k = 0; k < P.N; k++) parts.push({ name: 'tray_' + k, geoms: trayGeoms(P, k) });
+      parts.push({ name: 'divider', geoms: [extrude(dividerShape(P), P.divider_t, 12)] });
+      parts.push({ name: 'bar_3', geoms: [extrude(barShape(P, 3), P.bar_t, 24)] });
+      parts.push({ name: 'bar_2', geoms: [extrude(barShape(P, 2), P.bar_t, 24)] });
+      parts.push({ name: 'pin_bar', geoms: pinGeoms(P, P.grip_bar) });
+      parts.push({ name: 'pin_leg', geoms: pinGeoms(P, P.grip_leg) });
+      parts.push({ name: 'pin_latch', geoms: pinGeoms(P, P.grip_latch) });
+      var flip = new T.Matrix4().makeRotationX(PI).premultiply(new T.Matrix4().makeTranslation(0, 0, P.latch_thick));
+      parts.push({ name: 'latch', geoms: transformAll(latchGeoms(P), flip) });
+      parts.push({ name: 'leg', geoms: [extrude(legShape(P, 1), P.leg_t, 16)] });
+      var up = new T.Matrix4().makeRotationX(PI / 2).premultiply(new T.Matrix4().makeTranslation(0, 0, P.arm_w / 2));
+      var down = new T.Matrix4().makeRotationX(-PI / 2).premultiply(new T.Matrix4().makeTranslation(0, 0, P.arm_w / 2));
+      parts.push({ name: 'handle', geoms: transformAll(handleGeoms(P, 'full'), up) });
+      parts.push({ name: 'handle_left', geoms: transformAll(handleGeoms(P, 'left'), up) });
+      parts.push({ name: 'handle_right', geoms: transformAll(handleGeoms(P, 'right'), down) });
+      parts.push({ name: 'pegboard', geoms: [extrude(pegboardShape(P), P.tp, 20)] });
+      parts.push({ name: 'hook', geoms: [extrude(hookShape(P, false), P.hook_t, 4)] });
+      var plate = [], grips = [], i;
+      for (i = 0; i < P.n_bar_pins + 2; i++) grips.push(P.grip_bar);   // side bars + handle
+      grips.push(P.grip_leg, P.grip_leg, P.grip_leg, P.grip_leg, P.grip_latch, P.grip_latch);
+      grips.forEach(function (gr, idx) {
+        var m = new T.Matrix4().makeTranslation((idx % 4) * 27, Math.floor(idx / 4) * 13, 0);
+        transformAll(pinGeoms(P, gr), m).forEach(function (q) { plate.push(q); });
+      });
+      parts.push({ name: 'pins_plate', geoms: plate });
+      return parts;
+    }
+
+    /* ------------------------------------------------------------------ binary STL */
+    // merge coincident vertices (1e-4 mm grid) and drop triangles that collapse
+    function cleanTriangles(a) {
+      var map = new Map(), vx = [], ids = new Array(a.length / 3), i, out = [];
+      for (i = 0; i < a.length; i += 3) {
+        var key = Math.round(a[i] * 1e4) + ',' + Math.round(a[i + 1] * 1e4) + ',' + Math.round(a[i + 2] * 1e4), id = map.get(key);
+        if (id === undefined) { id = vx.length / 3; map.set(key, id); vx.push(a[i], a[i + 1], a[i + 2]); }
+        ids[i / 3] = id;
+      }
+      for (i = 0; i < ids.length; i += 3) {
+        var p = ids[i], q = ids[i + 1], s = ids[i + 2];
+        if (p === q || q === s || p === s) continue;
+        out.push(vx[3 * p], vx[3 * p + 1], vx[3 * p + 2], vx[3 * q], vx[3 * q + 1], vx[3 * q + 2], vx[3 * s], vx[3 * s + 1], vx[3 * s + 2]);
+      }
+      return out;
+    }
+    function toSTL(geoms, name) {
+      var arrays = geoms.map(function (g) { var ng = g.index ? g.toNonIndexed() : g; return cleanTriangles(ng.attributes.position.array); });
+      var n = 0;
+      arrays.forEach(function (a) { n += a.length / 9; });
+      var buf = new ArrayBuffer(84 + n * 50), dv = new DataView(buf), off = 84;
+      var hdr = ('Collapsible display stand ' + (name || '')).slice(0, 79);
+      for (var i = 0; i < hdr.length; i++) dv.setUint8(i, hdr.charCodeAt(i) & 0x7f);
+      dv.setUint32(80, n, true);
+      arrays.forEach(function (a) {
+        for (var i = 0; i < a.length; i += 9) {
+          var ux = a[i + 3] - a[i], uy = a[i + 4] - a[i + 1], uz = a[i + 5] - a[i + 2];
+          var vx = a[i + 6] - a[i], vy = a[i + 7] - a[i + 1], vz = a[i + 8] - a[i + 2];
+          var nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx, l = Math.hypot(nx, ny, nz) || 1;
+          dv.setFloat32(off, nx / l, true); dv.setFloat32(off + 4, ny / l, true); dv.setFloat32(off + 8, nz / l, true);
+          for (var j = 0; j < 9; j++) dv.setFloat32(off + 12 + j * 4, a[i + j], true);
+          dv.setUint16(off + 48, 0, true);
+          off += 50;
+        }
+      });
+      return buf;
+    }
+
+    return {
+      computeParams: computeParams,
+      circlePath: circlePath, roundedRectPath: roundedRectPath, roundedShape: roundedShape, polyShape: polyShape,
+      sideProfile: sideProfile, lipShape: lipShape, dividerShape: dividerShape, barShape: barShape, legShape: legShape,
+      pegboardShape: pegboardShape, hookShape: hookShape,
+      extrude: extrude, prismYZ: prismYZ, prismXZ: prismXZ, box: box, cylX: cylX, cylY: cylY, cylZ: cylZ,
+      trayGeoms: trayGeoms, handleGeoms: handleGeoms, latchGeoms: latchGeoms, pinGeoms: pinGeoms,
+      printParts: printParts, toSTL: toSTL
+    };
+  }
+
+  root.StandCore = { make: make, computeParams: computeParams };
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+(function () {
+  'use strict';
+
+  var DEFAULT = { pw: 194.2, ph: 213, dh: 60 };
+  var LIMIT = { min: 120, max: 250 }, DIV_LIMIT = { min: 30, max: 100 };
+  var computeParams = window.StandCore.computeParams;
+  function paramsFor(s) { return computeParams(s.pw, s.ph, s.dh / 100); }   // dh: divider height in % of the tray height
+
+  function specs(P) {
+    var foldW = P.W + 2 * (P.ha_x + P.arm_t);
+    var front = P.g_stand + P.tp + P.clr + P.clip_front;
+    var foldD = P.D_top + front;
+    var foldH = (P.N - 1) * P.H + P.th;
+    var handleTop = (P.N - 1) * P.H + P.hp_z + P.reach + P.grip_d / 2;
+    var depD = P.D_top + (P.N - 1) * 2 * P.delta + front;
+    var depH = (P.N - 1) * P.H + P.th - P.sd + P.Hp;
+    var parts = [
+      ['Top tray', P.W + 2 * P.washer_t, P.D_top],
+      ['Bottom tray', P.W + 2 * P.washer_t, P.D + front],
+      ['Pegboard', P.Wp, P.Hp],
+      ['Rear leg', P.lw, P.leg_len],
+      ['Handle half', P.W / 2 + 20 + P.ha_x + P.arm_t, P.reach + P.arm_w / 2 + P.grip_d / 2],
+      ['Side bar', 2 * P.L + P.bar_w, P.bar_w]
+    ];
+    var big = parts[0];
+    parts.forEach(function (p) { if (Math.max(p[1], p[2]) > Math.max(big[1], big[2])) big = p; });
+    var fits = parts.every(function (p) { return Math.max(p[1], p[2]) <= 250; });
+    return { foldW: foldW, foldD: foldD, foldH: foldH, handleTop: handleTop, depD: depD, depH: depH, big: big, fits: fits, front: front, onePieceHandle: P.W + 2 * (P.ha_x + P.arm_t) };
+  }
+
+  function hookCount(P) { return 5 * P.slot_groups.length; }
+
+  function partsList(P) {
+    var b3 = 2 * P.bars.filter(function (b) { return b.n === 3; }).length;
+    var b2 = 2 * P.bars.filter(function (b) { return b.n === 2; }).length;
+    return [
+      [P.N, 'Trays', 'each one is different'],
+      [P.N * (P.NC - 1), 'Dividers', Math.round(P.divider_h * 100) + ' % of the tray height'],
+      [b3, 'Side bars', '3 holes'],
+      [b2, 'Side bars', '2 holes'],
+      [P.n_bar_pins + 8, 'Compression pins', (P.n_bar_pins + 2) + ' bar and handle, 4 leg, 2 latch'],
+      [2, 'Rear legs', 'same part, one turned over'],
+      [2, 'Turn latches', ''],
+      [2, 'Handle halves', 'glued lap joint'],
+      [1, 'Pegboard', ''],
+      [hookCount(P), 'Hooks', '']
+    ];
+  }
+
+  /* =====================================================================
+     DOM
+     ===================================================================== */
+  function $(id) { return document.getElementById(id); }
+  var els = {
+    stage: $('stage'), canvas: $('view'), step: $('step'), play: $('play'), playIcon: $('play-icon'), fold: $('fold'),
+    pw: $('pw'), pwNum: $('pw-num'), ph: $('ph'), phNum: $('ph-num'), reset: $('reset'), hint: $('size-hint'),
+    dh: $('dh'), dhNum: $('dh-num'), dhHint: $('dh-hint'),
+    spec: $('spec'), parts: $('parts'), stl: $('stl'), download: $('download'), copy: $('copy'), note: $('dl-note'),
+    fallback: $('copy-fallback'), nogl: $('nogl'), fix: $('dl-fix')
+  };
+  var SRC = { scad: $('src-scad').textContent, readme: $('src-readme').textContent, exp: $('src-export').textContent };
+  var reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  var HINT = els.hint.textContent;
+
+  var size = { pw: DEFAULT.pw, ph: DEFAULT.ph, dh: DEFAULT.dh };
+  var P = paramsFor(size);
+  var u = 1, playing = false, dir = -1, holdUntil = 0;
+  var DURATION = 6.5;
+
+  function fmt(x) { var r = Math.round(x * 10) / 10; return Math.abs(r - Math.round(r)) < 0.05 ? String(Math.round(r)) : r.toFixed(1); }
+  function num(x) { return String(Math.round(x * 10) / 10); }
+  function clamp01(x) { return Math.max(0, Math.min(1, x)); }
+  function ease(x) { return x * x * (3 - 2 * x); }
+  function el(tag, text, cls) { var e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; }
+
+  function renderSpec() {
+    var s = specs(P);
+    var rows = [
+      ['Folded box', fmt(s.foldW) + ' × ' + fmt(s.foldD) + ' × ' + fmt(s.foldH) + ' mm', 'handle up: ' + fmt(s.handleTop) + ' mm tall'],
+      ['Display', fmt(s.foldW) + ' × ' + fmt(s.depD) + ' × ' + fmt(s.depH) + ' mm', 'width × depth × height to the pegboard top'],
+      ['Each tray', fmt(P.W) + ' × ' + fmt(P.D) + ' × ' + fmt(P.th) + ' mm', null],
+      ['Tier height', fmt(P.H) + ' mm', null],
+      ['Step per tier', fmt(2 * P.delta) + ' mm', null],
+      ['Largest part', s.big[0] + ', ' + fmt(Math.max(s.big[1], s.big[2])) + ' × ' + fmt(Math.min(s.big[1], s.big[2])) + ' mm', null]
+    ];
+    els.dhHint.textContent = fmt(P.divider_h * P.th) + ' mm tall along the flat back stretch and ' + fmt(P.divider_h * P.sideH(P.wall + 0.3)) +
+      ' mm at the front, in ' + fmt(P.th) + ' mm trays. Same outline as the side walls: flat, then a diagonal down to the front.';
+    els.spec.textContent = '';
+    rows.forEach(function (r, i) {
+      els.spec.appendChild(el('dt', r[0]));
+      var dd = el('dd', r[1]);
+      if (r[2]) dd.appendChild(el('small', r[2]));
+      if (i === rows.length - 1) {
+        dd.appendChild(el('br'));
+        dd.appendChild(el('span', s.fits ? 'every part fits a 25 × 25 cm bed' : 'some parts need a bed over 25 cm', 'badge ' + (s.fits ? 'ok' : 'warn')));
+      }
+      els.spec.appendChild(dd);
+    });
+  }
+
+  function renderParts() {
+    els.parts.textContent = '';
+    partsList(P).forEach(function (p) {
+      var li = el('li');
+      li.appendChild(el('b', '×' + p[0]));
+      var span = el('span', p[1]);
+      if (p[2]) { span.appendChild(document.createTextNode(' ')); span.appendChild(el('small', p[2])); }
+      li.appendChild(span);
+      els.parts.appendChild(li);
+    });
+  }
+
+  function stepText(v) {
+    if (v <= 0.002) return 'Carry box';
+    if (v >= 0.998) return 'Display';
+    if (v < 0.10) return 'Turning the latches';
+    if (v < 0.42) return 'Moving the panel to the back slot';
+    return 'Tiers swinging on the side links';
+  }
+
+  /* =====================================================================
+     3D view (geometry comes from StandCore, the same code that writes the STLs)
+     ===================================================================== */
+  var T = window.THREE;
+  var core = null, gl = null;
+  try { if (T && T.ExtrudeGeometry) core = window.StandCore.make(T); } catch (e) { core = null; }
+  try {
+    if (!core || !T.OrbitControls || !T.BufferGeometryUtils) throw new Error('three.js did not load');
+    gl = new T.WebGLRenderer({ canvas: els.canvas, antialias: true, alpha: true });
+  } catch (e) { gl = null; }
+
+  var scene, camera, controls, world, sun, model = null, needsRender = true, poseDirty = true, rebuildPending = false, camAnim = null;
+  var MAT = {};
+  var VIEWS = { three: [-0.62, 0.42, 0.66], front: [0, 0.16, 1], side: [-1, 0.14, 0.04], back: [0.32, 0.3, -1] };
+  var _m4, _ax, _ay, _az;
+
+  function merge(list) {
+    var gs = list.map(function (g) { var n = g.index ? g.toNonIndexed() : g; if (n !== g) g.dispose(); return n; });
+    var m = T.BufferGeometryUtils.mergeBufferGeometries(gs, false);
+    gs.forEach(function (g) { g.dispose(); });
+    return m;
+  }
+  function mesh(geo, mat) { var m = new T.Mesh(geo, mat); m.castShadow = true; m.receiveShadow = true; return m; }
+  function disposeTree(obj) { obj.traverse(function (o) { if (o.geometry) o.geometry.dispose(); }); }
+
+  // compression pins, shown as printed: built along +x with the flats horizontal (axis at z = cz)
+  var pinCache = {};
+  function pinGeo(grip) {
+    var key = grip.toFixed(3);
+    if (!pinCache[key]) {
+      var parts = core.pinGeoms(P, grip).map(function (g) { var n = g.index ? g.toNonIndexed() : g; n.deleteAttribute('uv'); return n; });
+      pinCache[key] = T.BufferGeometryUtils.mergeBufferGeometries(parts, false);
+    }
+    return pinCache[key];
+  }
+  function placedPin(grip, m) { var g = pinGeo(grip).clone(); g.applyMatrix4(m); return g; }
+  function pinAlongX(xHead, y, z, outward) {   // outward -1: pointing -x from a head on the right side
+    var cz = (P.pin_d - 0.6) / 2, m = new T.Matrix4().makeTranslation(xHead, y, z - cz);
+    if (outward < 0) m.multiply(new T.Matrix4().makeRotationZ(Math.PI));
+    return m;
+  }
+
+  function buildTray(k) {
+    var W = P.W, wall = P.wall, pins = [], divs = [];
+    var hx = P.washer_t + 0.1 + P.bar_t + 0.2 + P.pin_head_t, cz = (P.pin_d - 0.6) / 2;
+    for (var p = 0; p < 3; p++) {
+      if (!P.hasPin(k, p)) continue;
+      var y = P.pinY(p);
+      pins.push(placedPin(P.grip_bar, pinAlongX(-hx, y, P.pz, 1)), placedPin(P.grip_bar, pinAlongX(W + hx, y, P.pz, -1)));
+    }
+    if (k === P.N - 1) {
+      P.leg_cx.forEach(function (cx) {
+        [-P.leg_pin_dx, P.leg_pin_dx].forEach(function (dx) {
+          var m = new T.Matrix4().makeTranslation(cx + dx, P.D_top + 0.2 + P.pin_head_t, P.leg_pin_z - cz).multiply(new T.Matrix4().makeRotationZ(-Math.PI / 2));
+          pins.push(placedPin(P.grip_leg, m));
+        });
+      });
+      var hx2 = P.ha_x + P.arm_t + 0.2 + P.pin_head_t;
+      pins.push(placedPin(P.grip_bar, pinAlongX(-hx2, P.hp_y, P.hp_z, 1)), placedPin(P.grip_bar, pinAlongX(W + hx2, P.hp_y, P.hp_z, -1)));
+    }
+    var ds = core.dividerShape(P);
+    for (var j = 1; j < P.NC; j++) { var g = core.prismYZ(ds, P.divider_t, wall + j * P.comp_w - P.divider_t / 2, 8); g.translate(0, wall + 0.3, P.floor_t); divs.push(g); }
+    return { body: merge(core.trayGeoms(P, k)), pins: merge(pins), divs: merge(divs) };
+  }
+
+  function buildModel() {
+    if (model) { world.remove(model.root); disposeTree(model.root); }
+    Object.keys(pinCache).forEach(function (key) { pinCache[key].dispose(); delete pinCache[key]; });
+    var root = new T.Group(), trays = [], k;
+    for (k = 0; k < P.N; k++) {
+      var g = new T.Group(), parts = buildTray(k);
+      g.add(mesh(parts.body, MAT.tray), mesh(parts.divs, MAT.pink), mesh(parts.pins, MAT.yellow));
+      root.add(g);
+      trays.push(g);
+    }
+    var top = trays[P.N - 1];
+    [0, 1].forEach(function (i) {
+      var geo = core.prismXZ(core.legShape(P, i === 0 ? 1 : -1), P.leg_t, P.D + P.clr, 12);
+      geo.translate(P.leg_x0[i], 0, P.z_ledge - 0.1 - P.leg_len);
+      top.add(mesh(geo, MAT.yellow));
+    });
+    var handle = new T.Group();
+    handle.add(mesh(merge(core.handleGeoms(P, 'full')), MAT.yellow));
+    handle.position.set(0, P.hp_y, P.hp_z);
+    top.add(handle);
+    var latches = [];
+    P.latch_cx.forEach(function (cx) {
+      var outer = new T.Group(), inner = new T.Group();
+      outer.position.set(cx, P.D + 0.05 + P.latch_shoulder, P.latch_z);
+      outer.rotation.x = -Math.PI / 2;
+      inner.add(mesh(merge(core.latchGeoms(P)), MAT.tray));
+      var cz = (P.pin_d - 0.6) / 2;
+      inner.add(mesh(placedPin(P.grip_latch, new T.Matrix4().makeTranslation(-cz, 0, P.latch_thick - 0.2).multiply(new T.Matrix4().makeRotationY(Math.PI / 2))), MAT.yellow));
+      outer.add(inner);
+      trays[P.latch_k].add(outer);
+      latches.push(inner);
+    });
+    var geo2 = core.extrude(core.barShape(P, 2), P.bar_t, 20), geo3 = core.extrude(core.barShape(P, 3), P.bar_t, 20), bars = [];
+    P.bars.forEach(function (b) {
+      [0, 1].forEach(function (side) {
+        var m = mesh(b.n === 3 ? geo3 : geo2, MAT.yellow);
+        m.matrixAutoUpdate = false;
+        root.add(m);
+        bars.push({ b: b, side: side, m: m });
+      });
+    });
+    var panel = new T.Group();
+    panel.add(mesh(core.prismXZ(core.pegboardShape(P), P.tp, 0, 20), MAT.pink));
+    var hs = core.hookShape(P, true), hooks = [];
+    P.slot_col_x.forEach(function (x) {
+      P.slot_groups.forEach(function (gz) { var h = core.prismYZ(hs, P.hook_t, x - P.hook_t / 2, 4); h.translate(0, 0, gz + P.slot_pitch / 2); hooks.push(h); });
+    });
+    panel.add(mesh(merge(hooks), MAT.tray));
+    root.add(panel);
+    world.add(root);
+    model = { root: root, trays: trays, bars: bars, panel: panel, handle: handle, latches: latches };
+    poseDirty = true;
+  }
+
+  function alongPath(pts, f) {
+    var lens = [], total = 0, i;
+    for (i = 1; i < pts.length; i++) { var l = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1], pts[i][2] - pts[i - 1][2]); lens.push(l); total += l; }
+    var d = f * total;
+    for (i = 0; i < lens.length; i++) {
+      if (d <= lens[i] || i === lens.length - 1) {
+        var t = lens[i] ? Math.min(1, d / lens[i]) : 1, a = pts[i], b = pts[i + 1];
+        return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+      }
+      d -= lens[i];
+    }
+    return pts[pts.length - 1];
+  }
+
+  function applyPose() {
+    if (!model) return;
+    var t = ease(clamp01((u - 0.42) / 0.58));
+    var fLatch = ease(clamp01(u / 0.08));
+    var fHandle = ease(clamp01((u - 0.03) / 0.12));
+    var fPanel = ease(clamp01((u - 0.12) / 0.28));
+    var thc = Math.PI / 2 + P.alpha, thd = Math.PI / 2 - P.alpha, theta = thc + t * (thd - thc);
+    var dy = P.delta + P.L * Math.cos(theta), dz = P.L * Math.sin(theta);
+    model.trays.forEach(function (g, k) { g.position.set(0, k * dy, k * dz); });
+    model.bars.forEach(function (it) {
+      var kh = it.b.hi, p = it.b.c - kh;
+      var ay = kh * dy + P.pinY(p), az = kh * dz + P.pz;
+      var by = (kh - 1) * dy + P.pinY(p + 1), bz = (kh - 1) * dz + P.pz;
+      var ang = Math.atan2(bz - az, by - ay), c = Math.cos(ang), s = Math.sin(ang);
+      _ax.set(0, c, s); _ay.set(0, -s, c);
+      _m4.makeBasis(_ax, _ay, _az);
+      _m4.setPosition(it.side === 0 ? -P.washer_t - 0.1 - P.bar_t : P.W + P.washer_t + 0.1, ay, az);
+      it.m.matrix.copy(_m4);
+      it.m.matrixWorldNeedsUpdate = true;
+    });
+    model.latches.forEach(function (l) { l.rotation.z = fLatch * Math.PI / 2; });
+    model.handle.rotation.x = -fHandle * P.handle_rest * Math.PI / 180;
+    var slot = [P.W / 2, (P.N - 1) * dy + P.D + P.clr, (P.N - 1) * dz + P.th - P.sd + 0.1];
+    if (fPanel >= 1) model.panel.position.set(slot[0], slot[1], slot[2]);
+    else {
+      var lift = (P.N - 1) * P.H + P.th + 14;
+      var q = alongPath([[P.W / 2, -P.g_stand - P.tp, 2.1], [P.W / 2, -P.g_stand - P.tp - 18, lift], [P.W / 2, P.D + P.clr, lift], slot], fPanel);
+      model.panel.position.set(q[0], q[1], q[2]);
+    }
+    needsRender = true;
+  }
+
+  function frame() {
+    var s = specs(P);
+    var yMin = -s.front, yMax = P.D_top + (P.N - 1) * 2 * P.delta, zMax = Math.max(s.depH, s.handleTop);
+    var center = new T.Vector3(P.W / 2, zMax * 0.42, -(yMin + yMax) / 2);
+    var radius = 0.5 * Math.hypot(s.foldW, yMax - yMin, zMax);
+    return { center: center, radius: radius };
+  }
+  function fitDistance(radius) {
+    var vf = camera.fov * Math.PI / 180, hf = 2 * Math.atan(Math.tan(vf / 2) * camera.aspect);
+    return radius / Math.sin(Math.min(vf, hf) / 2) * 1.08;
+  }
+  function goToView(name, animate) {
+    document.querySelectorAll('.views button').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.view === name ? 'true' : 'false'); });
+    var f = frame(), d = new T.Vector3(VIEWS[name][0], VIEWS[name][1], VIEWS[name][2]).normalize();
+    var pos = f.center.clone().addScaledVector(d, fitDistance(f.radius));
+    updateLights(f.center, f.radius);
+    controls.minDistance = f.radius * 0.45;
+    controls.maxDistance = f.radius * 6;
+    if (!animate || reduceMotion) { camera.position.copy(pos); controls.target.copy(f.center); camAnim = null; controls.update(); needsRender = true; return; }
+    camAnim = { from: camera.position.clone(), fromT: controls.target.clone(), to: pos, toT: f.center, start: performance.now(), dur: 650 };
+  }
+  function refit() {
+    var f = frame(), dirv = camera.position.clone().sub(controls.target).normalize();
+    controls.target.copy(f.center);
+    camera.position.copy(f.center).addScaledVector(dirv, fitDistance(f.radius));
+    controls.minDistance = f.radius * 0.45;
+    controls.maxDistance = f.radius * 6;
+    updateLights(f.center, f.radius);
+    controls.update();
+    needsRender = true;
+  }
+  function updateLights(center, radius) {
+    sun.target.position.copy(center);
+    sun.position.copy(center).add(new T.Vector3(-0.45, 1.1, 0.75).multiplyScalar(radius * 2.2));
+    var c = sun.shadow.camera, e = radius * 1.4;
+    c.left = -e; c.right = e; c.top = e; c.bottom = -e; c.near = radius * 0.2; c.far = radius * 6;
+    c.updateProjectionMatrix();
+  }
+
+  function initScene() {
+    _m4 = new T.Matrix4(); _ax = new T.Vector3(); _ay = new T.Vector3(); _az = new T.Vector3(1, 0, 0);
+    gl.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    gl.setClearColor(0x000000, 0);
+    gl.shadowMap.enabled = true;
+    gl.shadowMap.type = T.PCFSoftShadowMap;
+    scene = new T.Scene();
+    camera = new T.PerspectiveCamera(32, 1, 2, 10000);
+    controls = new T.OrbitControls(camera, els.canvas);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.09;
+    controls.maxPolarAngle = Math.PI * 0.49;
+    controls.addEventListener('change', function () { needsRender = true; });
+    controls.addEventListener('start', function () {
+      document.querySelectorAll('.views button').forEach(function (b) { b.setAttribute('aria-pressed', 'false'); });
+      camAnim = null;
+    });
+    scene.add(new T.HemisphereLight(0xffffff, 0xe6d5df, 0.72));
+    sun = new T.DirectionalLight(0xffffff, 0.78);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.bias = -0.0004;
+    sun.shadow.normalBias = 0.6;
+    scene.add(sun, sun.target);
+    var fill = new T.DirectionalLight(0xfff0f7, 0.32);
+    fill.position.set(600, 250, -500);
+    scene.add(fill);
+    MAT.tray = new T.MeshStandardMaterial({ color: 0xd4199b, roughness: 0.62, metalness: 0 });
+    MAT.pink = new T.MeshStandardMaterial({ color: 0xf6b3dc, roughness: 0.72, metalness: 0 });
+    MAT.yellow = new T.MeshStandardMaterial({ color: 0xffc91a, roughness: 0.55, metalness: 0 });
+    world = new T.Group();
+    world.rotation.x = -Math.PI / 2;    // OpenSCAD z-up -> three.js y-up
+    scene.add(world);
+    var ground = new T.Mesh(new T.PlaneGeometry(6000, 6000), new T.ShadowMaterial({ opacity: 0.17 }));
+    ground.position.z = -0.05;
+    ground.receiveShadow = true;
+    world.add(ground);
+    resize();
+    buildModel();
+    goToView('three', false);
+    if ('ResizeObserver' in window) new ResizeObserver(resize).observe(els.stage);
+    else window.addEventListener('resize', resize);
+    requestAnimationFrame(loop);
+  }
+
+  function resize() {
+    var r = els.stage.getBoundingClientRect(), w = Math.max(1, Math.round(r.width)), h = Math.max(1, Math.round(r.height));
+    gl.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    needsRender = true;
+  }
+
+  var last = 0;
+  function loop(now) {
+    var dt = last ? Math.min(0.05, (now - last) / 1000) : 0;
+    last = now;
+    if (playing && now >= holdUntil) {
+      u += dir * dt / DURATION;
+      if (u >= 1) { u = 1; dir = -1; holdUntil = now + 1500; }
+      else if (u <= 0) { u = 0; dir = 1; holdUntil = now + 1500; }
+      els.fold.value = String(Math.round(u * 1000));
+      poseDirty = true;
+    }
+    if (rebuildPending) {
+      rebuildPending = false;
+      P = paramsFor(size);
+      buildModel();
+      renderSpec();
+      renderParts();
+      refit();
+    }
+    if (poseDirty) { applyPose(); els.step.textContent = stepText(u); poseDirty = false; }
+    if (camAnim) {
+      var f = Math.min(1, (now - camAnim.start) / camAnim.dur), e = ease(f);
+      camera.position.lerpVectors(camAnim.from, camAnim.to, e);
+      controls.target.lerpVectors(camAnim.fromT, camAnim.toT, e);
+      if (f >= 1) camAnim = null;
+      needsRender = true;
+    }
+    if (controls.update()) needsRender = true;
+    if (needsRender) { gl.render(scene, camera); needsRender = false; }
+    requestAnimationFrame(loop);
+  }
+
+  /* =====================================================================
+     Controls
+     ===================================================================== */
+  function setPlaying(on) {
+    playing = on;
+    els.play.setAttribute('aria-label', on ? 'Pause the fold animation' : 'Play the fold animation');
+    els.playIcon.setAttribute('d', on ? 'M4 2.5h3v11H4zM9 2.5h3v11H9z' : 'M4 2.5v11l9-5.5z');
+    if (on) { if (u >= 1) dir = -1; else if (u <= 0) dir = 1; holdUntil = 0; }
+  }
+  els.play.addEventListener('click', function () { setPlaying(!playing); });
+  els.fold.addEventListener('input', function () {
+    setPlaying(false);
+    u = Number(els.fold.value) / 1000;
+    poseDirty = true;
+    if (!gl) els.step.textContent = stepText(u);
+  });
+  document.querySelectorAll('.views button').forEach(function (b) {
+    b.addEventListener('click', function () { if (gl) goToView(b.dataset.view, true); });
+  });
+
+  function setSize(pw, ph, source) {
+    size.pw = pw; size.ph = ph;
+    if (source !== 'pw') els.pw.value = String(pw);
+    if (source !== 'ph') els.ph.value = String(ph);
+    if (source !== 'pw-num') els.pwNum.value = num(pw);
+    if (source !== 'ph-num') els.phNum.value = num(ph);
+    if (gl) rebuildPending = true;
+    else { P = paramsFor(size); renderSpec(); renderParts(); }
+  }
+  function readNumber(input, fallback) {
+    var v = Number(input.value);
+    if (!isFinite(v) || input.value === '') return { v: fallback, ok: false };
+    var c = Math.max(LIMIT.min, Math.min(LIMIT.max, v));
+    return { v: c, ok: c === v };
+  }
+  els.pw.addEventListener('input', function () { setSize(Number(els.pw.value), size.ph, 'pw'); });
+  els.ph.addEventListener('input', function () { setSize(size.pw, Number(els.ph.value), 'ph'); });
+  function onNum(which) {
+    var input = which === 'pw' ? els.pwNum : els.phNum, r = readNumber(input, size[which]);
+    els.hint.textContent = r.ok ? HINT : 'Sizes run from 120 to 250 mm, so that value was set to ' + num(r.v) + ' mm.';
+    els.hint.style.color = r.ok ? '' : 'var(--warn)';
+    if (which === 'pw') setSize(r.v, size.ph, 'pw-num'); else setSize(size.pw, r.v, 'ph-num');
+    input.value = num(r.v);
+  }
+  els.pwNum.addEventListener('change', function () { onNum('pw'); });
+  els.phNum.addEventListener('change', function () { onNum('ph'); });
+  function setDivider(v, source) {
+    size.dh = v;
+    if (source !== 'dh') els.dh.value = String(v);
+    if (source !== 'dh-num') els.dhNum.value = String(v);
+    if (gl) rebuildPending = true;
+    else { P = paramsFor(size); renderSpec(); renderParts(); }
+  }
+  els.dh.addEventListener('input', function () { setDivider(Number(els.dh.value), 'dh'); });
+  els.dhNum.addEventListener('change', function () {
+    var v = Number(els.dhNum.value);
+    v = isFinite(v) && els.dhNum.value !== '' ? Math.round(Math.max(DIV_LIMIT.min, Math.min(DIV_LIMIT.max, v))) : size.dh;
+    els.dhNum.value = String(v);
+    setDivider(v, 'dh-num');
+  });
+  els.reset.addEventListener('click', function () {
+    els.hint.textContent = HINT; els.hint.style.color = '';
+    setSize(DEFAULT.pw, DEFAULT.ph, null);
+  });
+
+  /* =====================================================================
+     Files
+     ===================================================================== */
+  function stem() { return 'collapsible-stand-' + num(size.pw) + 'x' + num(size.ph) + 'mm' + (size.dh !== DEFAULT.dh ? '-dividers' + size.dh : ''); }
+  function scadForSize() {
+    return SRC.scad
+      .replace(/^(panel_width = )[0-9.]+;/m, '$1' + num(size.pw) + ';')
+      .replace(/^(panel_height = )[0-9.]+;/m, '$1' + num(size.ph) + ';')
+      .replace(/^(divider_height = )[0-9.]+;/m, '$1' + String(size.dh / 100) + ';');
+  }
+  function setNote(text) { els.note.textContent = text; }
+
+  function partsText(Pp) {
+    var s = specs(Pp), b3 = 2 * Pp.bars.filter(function (b) { return b.n === 3; }).length, b2 = 2 * Pp.bars.filter(function (b) { return b.n === 2; }).length;
+    function row(file, qty, note) { var a = (file + '                    ').slice(0, 20); return '  ' + a + (String(qty) + '    ').slice(0, 5) + (note || ''); }
+    var lines = [
+      'Collapsible Display Stand - STL set',
+      'Front panel ' + num(Pp.pw) + ' x ' + num(Pp.ph) + ' mm. Folded box ' + fmt(s.foldW) + ' x ' + fmt(s.foldD) + ' x ' + fmt(s.foldH) + ' mm, display ' + fmt(s.depD) + ' mm deep and ' + fmt(s.depH) + ' mm tall.',
+      'Dividers ' + Math.round(Pp.divider_h * 100) + ' % of the tray height (' + fmt(Pp.divider_h * Pp.th) + ' mm at the back).',
+      '',
+      'Print quantities'
+    ];
+    for (var k = 0; k < Pp.N; k++) {
+      var note = k === 0 ? 'bottom tier: panel hooks with floors' : k === Pp.N - 1 ? 'top tier: leg and pegboard slot, handle pivots' : '';
+      if (k === Pp.latch_k) note = (note ? note + ', ' : '') + 'panel hooks and latch pivots';
+      if (k === 0 && Pp.latch_k === 0) note = 'bottom tier: panel hooks with floors, latch pivots';
+      lines.push(row('tray_' + k + '.stl', 1, note));
+    }
+    lines.push(
+      row('divider.stl', Pp.N * (Pp.NC - 1), ''),
+      row('bar_3.stl', b3, 'side bars with 3 holes'),
+      row('bar_2.stl', b2, 'side bars with 2 holes'),
+      row('pin_bar.stl', Pp.n_bar_pins + 2, Pp.n_bar_pins + ' side bars + 2 handle; or print pins_plate.stl once for all ' + (Pp.n_bar_pins + 8) + ' pins'),
+      row('pin_leg.stl', 4, ''),
+      row('pin_latch.stl', 2, ''),
+      row('latch.stl', 2, ''),
+      row('leg.stl', 2, 'the second leg is the same part turned over'),
+      row('handle_left.stl', 1, 'glue to handle_right at the lap joint'),
+      row('handle_right.stl', 1, 'or print handle.stl in one piece if your bed takes ' + fmt(s.onePieceHandle) + ' mm'),
+      row('pegboard.stl', 1, ''),
+      row('hook.stl', hookCount(Pp), ''),
+      '',
+      'Print settings',
+      '  PLA or PETG, 0.2 mm layers, 3 walls, 15-20% infill, no supports.',
+      '  Trays print floor-down; every other part is already laid flat.',
+      '  Pins: print as exported (lying on their flat side), 100% infill, PETG if you have it.',
+      '  Print one bar, two pins and tray_0 first and check the pins click in and the bar turns freely.',
+      '',
+      'These STL files were built in the browser from the same dimensions as collapsible_stand.scad.',
+      'Some parts are made of several overlapping solids; slicers merge them automatically.',
+      'Assembly steps are in README.md.'
+    );
+    return lines.join('\r\n') + '\r\n';
+  }
+
+  function buildStlZip() {
+    var Pp = paramsFor(size), parts = core.printParts(Pp), z = new window.JSZip(), folder = z.folder(stem() + '-stl');
+    parts.forEach(function (p) {
+      folder.file(p.name + '.stl', core.toSTL(p.geoms, p.name));
+      p.geoms.forEach(function (g) { g.dispose(); });
+    });
+    folder.file('PARTS.txt', partsText(Pp));
+    folder.file('README.md', SRC.readme);
+    return z.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } }).then(function (blob) {
+      return { filename: stem() + '-stl.zip', data: blob, done: 'Saved ' + stem() + '-stl.zip. Quantities and print settings are in PARTS.txt inside.' };
+    });
+  }
+  function buildScadZip() {
+    if (!window.JSZip) return Promise.resolve({ filename: stem() + '.scad.txt', data: scadForSize(), done: 'Saved the OpenSCAD file. Rename it to collapsible_stand.scad before opening it.' });
+    var z = new window.JSZip();
+    z.file('collapsible_stand.scad', scadForSize());
+    z.file('README.md', SRC.readme);
+    z.file('export_stls.sh', SRC.exp);
+    return z.generateAsync({ type: 'blob', compression: 'DEFLATE' }).then(function (blob) {
+      return { filename: stem() + '-openscad.zip', data: blob, done: 'Saved ' + stem() + '-openscad.zip. Unzip it and open collapsible_stand.scad in OpenSCAD.' };
+    });
+  }
+
+  // saver: the claude.ai downloads capability inside an artifact, or the browser itself on an ordinary web page
+  var saver = null;
+  var browserSaver = {
+    save: function (req) {
+      return new Promise(function (resolve) {
+        var blob = req.data instanceof Blob ? req.data : new Blob([req.data], { type: 'text/plain' });
+        var url = URL.createObjectURL(blob), a = document.createElement('a');
+        a.href = url; a.download = req.filename; a.rel = 'noopener';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 20000);
+        resolve({ status: 'saved' });
+      });
+    }
+  };
+  function wireSave(btn, busy, build) {
+    btn.hidden = false;
+    if (btn.dataset.wired) return;
+    btn.dataset.wired = '1';
+    btn.addEventListener('click', function () {
+      if (!saver) return;
+      btn.disabled = true;
+      setNote(busy);
+      setTimeout(function () {
+        Promise.resolve().then(build).then(function (file) {
+          return saver.save({ filename: file.filename, data: file.data }).then(function (res) {
+            setNote(res && res.status === 'delivered' ? 'Sent to the place you picked.' : file.done);
+          });
+        }).catch(function (err) {
+          var code = err && err.code;
+          if (code === 'declined') setNote('Download cancelled.');
+          else if (code === 'rate_limited') setNote('A save prompt is already open. Finish it, then try again.');
+          else if (code === 'not_granted' || code === 'capability_disabled') downloadsMissing();
+          else if (code === 'unavailable' || code === 'capability_removed') { els.stl.hidden = true; els.download.hidden = true; setNote(NO_DL); }
+          else if (code === 'extension_not_enabled') setNote('This view does not allow .zip files, so the files cannot be saved here. Open the page signed in at claude.ai, or copy the OpenSCAD file.');
+          else setNote('The file could not be made' + (code ? ' (' + code + ')' : '') + '. Try again, or copy the OpenSCAD file instead.');
+        }).then(function () { btn.disabled = false; });
+      }, 40);
+    });
+  }
+
+  els.copy.addEventListener('click', function () {
+    var text = scadForSize();
+    function done() { els.fallback.hidden = true; setNote('Copied. Paste it into a new file named collapsible_stand.scad and open it in OpenSCAD.'); }
+    function fail() {
+      els.fallback.hidden = false;
+      els.fallback.value = text;
+      els.fallback.focus();
+      els.fallback.select();
+      setNote('This view blocked the clipboard. The file text is selected below; copy it with Ctrl+C or Cmd+C.');
+    }
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fail);
+      else fail();
+    } catch (e) { fail(); }
+  });
+
+  var DL_HINT = els.note.textContent;
+  var NO_DL = 'Downloads are not available in this view, so the STL and model files cannot be saved here. Try opening the page signed in at claude.ai. You can still copy the OpenSCAD file.';
+  function downloadsReady(s) {
+    saver = s;
+    els.fix.hidden = true;
+    var stlOk = !!(core && T && T.ConvexGeometry && window.JSZip);
+    if (stlOk) wireSave(els.stl, 'Building the STL files…', buildStlZip);
+    wireSave(els.download, 'Packing the OpenSCAD files…', buildScadZip);
+    setNote(stlOk ? DL_HINT : 'The STL builder could not load here (one of its scripts was blocked), so only the OpenSCAD files can be saved. Reload the page to try again.');
+  }
+  // inside an artifact: say why saving is off and, when the viewer can fix it, offer the switch
+  function downloadsMissing() {
+    var c = window.claude;
+    saver = null;
+    els.stl.hidden = true; els.download.hidden = true;
+    setNote(NO_DL);
+    c.use('permissions').then(function (perm) {
+      if (!perm) return;
+      return perm.state('downloads').then(function (st) {
+        if (st !== 'denied' && st !== 'prompt') return;
+        setNote(st === 'denied' ? 'Downloads are switched off for this page, so the STL files cannot be saved. Switch them back on to download.' : 'This page needs your permission to save files.');
+        els.fix.textContent = st === 'denied' ? 'Switch downloads back on' : 'Allow downloads';
+        els.fix.hidden = false;
+        els.fix.onclick = function () {
+          var ask = st === 'denied' ? perm.manage().then(function () { return perm.state('downloads'); })
+            : perm.request(['downloads']).then(function (r) { return r.downloads; });
+          ask.then(function (now) {
+            if (now !== 'granted') { setNote('Downloads are still off. You can switch them on from the page menu, under Permissions.'); return; }
+            return c.use('downloads').then(function (dl) {
+              if (dl) downloadsReady(dl); else { els.fix.hidden = true; setNote('Downloads are on now. Reload the page to use them.'); }
+            });
+          }).catch(function () { setNote('Open the page menu, choose Permissions, switch Downloads on, then reload the page.'); });
+        };
+      });
+    }).catch(function () {});
+  }
+  function initDownloads() {
+    var c = window.claude;
+    if (!c || typeof c.use !== 'function') { downloadsReady(browserSaver); return; }   // an ordinary web page: the browser saves the files
+    c.use('downloads').then(function (dl) {
+      if (dl) downloadsReady(dl); else downloadsMissing();
+    }).catch(downloadsMissing);
+  }
+
+  /* ---- start ---- */
+  renderSpec();
+  renderParts();
+  els.step.textContent = stepText(u);
+  initDownloads();
+  if (gl) {
+    initScene();
+    if (!reduceMotion) setTimeout(function () { if (!playing && u === 1) setPlaying(true); }, 1600);
+  } else {
+    els.nogl.hidden = false;
+    els.canvas.hidden = true;
+    document.querySelectorAll('.overlay').forEach(function (o) { o.hidden = true; });
+  }
+})();
+
+</script>
+
+</body>
+</html>
